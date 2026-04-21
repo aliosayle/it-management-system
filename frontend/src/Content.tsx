@@ -21,10 +21,6 @@ export default function Content() {
         />
       </Routes>
       <Footer>
-        <div>Copyright © 2011-2026 IT Management Inc.</div>
-        <div>
-          All trademarks or registered trademarks are property of their respective owners.
-        </div>
         <div className="footer-attribution">
           System by Ali Osseili · Copyright Afrifood SARLU
         </div>

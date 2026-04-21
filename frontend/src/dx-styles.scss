@@ -101,6 +101,40 @@ body {
     }
   }
 
+  /* Denser DevExtreme grids (AppDataGrid) */
+  .dx-datagrid-app.dx-datagrid {
+    font-size: 13px;
+    line-height: 1.25;
+
+    .dx-datagrid-headers .dx-datagrid-table .dx-row > td {
+      padding-top: 4px;
+      padding-bottom: 4px;
+    }
+
+    .dx-datagrid-rowsview .dx-data-row > td {
+      padding-top: 2px;
+      padding-bottom: 2px;
+    }
+
+    .dx-datagrid-rowsview .dx-data-row {
+      line-height: 1.2;
+    }
+
+    .dx-datagrid-filter-row .dx-editor-cell {
+      padding-top: 2px;
+      padding-bottom: 2px;
+    }
+
+    .dx-datagrid-search-panel {
+      margin-bottom: 4px;
+    }
+
+    .dx-datagrid-pager {
+      padding-top: 4px;
+      padding-bottom: 2px;
+    }
+  }
+
   .stock-toolbar {
     flex-shrink: 0;
     display: flex;

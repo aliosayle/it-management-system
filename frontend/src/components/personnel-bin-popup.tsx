@@ -74,8 +74,8 @@ export function PersonnelBinPopup({
       onHiding={onClose}
       showTitle
       title={`Personal bin — ${title}`}
-      width={760}
-      height={540}
+      width={1100}
+      height={620}
       showCloseButton
     >
       <AppDataGrid
@@ -84,7 +84,7 @@ export function PersonnelBinPopup({
         dataSource={dataSource}
         persistenceKey={`itm-bin-${personnelId ?? "none"}`}
         repaintChangesOnly
-        height={360}
+        height={480}
         onEditorPreparing={(e) => {
           if (e.dataField === "productId" && e.parentType === "dataRow" && e.row?.isNewRow === false) {
             e.cancel = true;
@@ -95,7 +95,7 @@ export function PersonnelBinPopup({
         }}
       >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
-          <Popup title="Bin line" showTitle width={480} height="auto" />
+          <Popup title="Bin line" showTitle width={720} height="auto" />
         </Editing>
         <FilterRow visible />
         <Column

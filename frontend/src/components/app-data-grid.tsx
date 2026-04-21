@@ -37,12 +37,12 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         showBorders={showBorders ?? true}
         rowAlternationEnabled={rowAlternationEnabled ?? true}
         columnAutoWidth={columnAutoWidth ?? true}
-        columnMinWidth={columnMinWidth ?? 80}
+        columnMinWidth={columnMinWidth ?? 64}
         width={width ?? "100%"}
         allowColumnReordering={allowColumnReordering ?? true}
         {...rest}
       >
-        <SearchPanel visible highlightCaseSensitive={false} width={260} />
+        <SearchPanel visible highlightCaseSensitive={false} width={220} />
         <HeaderFilter visible allowSearch />
         <ColumnChooser enabled mode="select" />
         <Export enabled allowExportSelectedData />

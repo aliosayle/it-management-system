@@ -18,7 +18,6 @@ import {
   type ProductOption,
 } from "../components/personnel-bin-popup";
 import { apiFetch } from "../api/client";
-import { useAuth } from "../contexts/auth-hooks";
 
 type FormMeta = {
   sites: { id: string; label: string }[];
@@ -26,8 +25,6 @@ type FormMeta = {
 };
 
 export default function PersonnelPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
   const [meta, setMeta] = useState<FormMeta | null>(null);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [binOpen, setBinOpen] = useState(false);
@@ -66,15 +63,6 @@ export default function PersonnelPage() {
     })();
   }, [loadFormMeta]);
 
-  const userLookup = useMemo(
-    () =>
-      (meta?.users ?? []).map((u) => ({
-        id: u.id,
-        label: `${u.displayName} (${u.email})`,
-      })),
-    [meta],
-  );
-
   const dataSource = useMemo(
     () =>
       new CustomStore({
@@ -85,6 +73,7 @@ export default function PersonnelPage() {
           delete payload.fullName;
           delete payload.siteLabel;
           delete payload.userEmail;
+          delete payload.userId;
           return apiFetch("/api/personnel", {
             method: "POST",
             body: JSON.stringify(payload),
@@ -96,6 +85,7 @@ export default function PersonnelPage() {
           delete payload.fullName;
           delete payload.siteLabel;
           delete payload.userEmail;
+          delete payload.userId;
           return apiFetch(`/api/personnel/${key}`, {
             method: "PATCH",
             body: JSON.stringify(payload),
@@ -176,30 +166,6 @@ export default function PersonnelPage() {
           allowEditing={false}
           formItem={{ visible: false }}
         />
-        {isAdmin ? (
-          <Column
-            dataField="userId"
-            caption="App login (optional)"
-            width={260}
-            allowFiltering={false}
-          >
-            <ColumnLookup
-              dataSource={userLookup}
-              valueExpr="id"
-              displayExpr="label"
-              allowClearing
-            />
-          </Column>
-        ) : (
-          <Column
-            dataField="userEmail"
-            caption="App login"
-            allowEditing={false}
-            width={200}
-            formItem={{ visible: false }}
-            cellRender={({ value }) => (value ? String(value) : "—")}
-          />
-        )}
         <Column
           dataField="createdAt"
           dataType="datetime"
