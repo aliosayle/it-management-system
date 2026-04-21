@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import CustomStore from "devextreme/data/custom_store";
 import {
   Column,
-  ColumnLookup,
   Paging,
   Pager,
   FilterRow,
@@ -104,13 +103,18 @@ export function PersonnelBinPopup({
           allowEditing={false}
           formItem={{ visible: false }}
         />
-        <Column dataField="productId" caption="Product" width={240}>
+        <Column
+          dataField="productId"
+          caption="Product"
+          width={240}
+          lookup={{
+            dataSource: products,
+            valueExpr: "id",
+            displayExpr: "label",
+            allowSearch: true,
+          }}
+        >
           <RequiredRule />
-          <ColumnLookup
-            dataSource={products}
-            valueExpr="id"
-            displayExpr="label"
-          />
         </Column>
         <Column
           dataField="productSku"

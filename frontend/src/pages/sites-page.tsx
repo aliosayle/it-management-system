@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import CustomStore from "devextreme/data/custom_store";
 import {
   Column,
-  ColumnLookup,
   Paging,
   Pager,
   FilterRow,
@@ -79,13 +78,18 @@ export default function SitesPage() {
           allowEditing={false}
           formItem={{ visible: false }}
         />
-        <Column dataField="companyId" caption="Company" width={220}>
+        <Column
+          dataField="companyId"
+          caption="Company"
+          width={220}
+          lookup={{
+            dataSource: companies,
+            valueExpr: "id",
+            displayExpr: "name",
+            allowSearch: true,
+          }}
+        >
           <RequiredRule />
-          <ColumnLookup
-            dataSource={companies}
-            valueExpr="id"
-            displayExpr="name"
-          />
         </Column>
         <Column dataField="name" minWidth={180}>
           <RequiredRule />

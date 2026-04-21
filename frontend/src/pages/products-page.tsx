@@ -243,6 +243,8 @@ export default function ProductsPage() {
               displayExpr: "label",
               valueExpr: "id",
               searchEnabled: true,
+              showDropDownButton: true,
+              placeholder: "Search personnel…",
             }}
           >
             <Label text="Personnel" />
@@ -256,6 +258,8 @@ export default function ProductsPage() {
               displayExpr: "label",
               valueExpr: "id",
               searchEnabled: true,
+              showDropDownButton: true,
+              placeholder: "Search product…",
             }}
           >
             <Label text="Product" />

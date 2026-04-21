@@ -268,6 +268,8 @@ export default function PurchasesPage() {
               value={authorizerId}
               onValueChanged={(e) => setAuthorizerId(e.value ?? null)}
               searchEnabled
+              showDropDownButton
+              placeholder="Search personnel…"
             />
           </div>
           <div className="dx-field">
@@ -280,6 +282,7 @@ export default function PurchasesPage() {
               onValueChanged={(e) =>
                 setDestination((e.value as "STOCK" | "PERSONNEL_BIN") ?? "STOCK")
               }
+              searchEnabled
             />
           </div>
           {destination === "PERSONNEL_BIN" ? (
@@ -292,6 +295,8 @@ export default function PurchasesPage() {
                 value={targetPersonnelId}
                 onValueChanged={(e) => setTargetPersonnelId(e.value ?? null)}
                 searchEnabled
+                showDropDownButton
+                placeholder="Search personnel…"
               />
             </div>
           ) : null}
@@ -327,7 +332,8 @@ export default function PurchasesPage() {
                 value={line.productId}
                 onValueChanged={(e) => updateLine(index, { productId: e.value ?? null })}
                 searchEnabled
-                placeholder="Product"
+                showDropDownButton
+                placeholder="Search product…"
               />
               <NumberBox
                 width={120}

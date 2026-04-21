@@ -46,7 +46,7 @@ router.get("/", async (_req, res) => {
 /** Product stock statement (movement history). */
 router.get("/:id/movements", async (req, res) => {
   const skip = Math.max(0, Number(req.query.skip) || 0);
-  const take = Math.min(200, Math.max(1, Number(req.query.take) || 50));
+  const take = Math.min(5000, Math.max(1, Number(req.query.take) || 50));
 
   const product = await prisma.product.findUnique({
     where: { id: req.params.id },

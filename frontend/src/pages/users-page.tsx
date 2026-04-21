@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import CustomStore from "devextreme/data/custom_store";
 import {
   Column,
-  ColumnLookup,
   Paging,
   Pager,
   FilterRow,
@@ -117,13 +116,17 @@ export default function UsersPage() {
         <Column dataField="displayName" width={180}>
           <RequiredRule />
         </Column>
-        <Column dataField="role" width={120}>
+        <Column
+          dataField="role"
+          width={120}
+          lookup={{
+            dataSource: roleValues,
+            valueExpr: "value",
+            displayExpr: "text",
+            allowSearch: true,
+          }}
+        >
           <RequiredRule />
-          <ColumnLookup
-            dataSource={roleValues}
-            valueExpr="value"
-            displayExpr="text"
-          />
         </Column>
         <Column
           dataField="createdAt"

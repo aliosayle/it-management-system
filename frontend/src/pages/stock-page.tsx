@@ -62,6 +62,7 @@ export default function StockPage() {
     });
   }, [loadProducts]);
 
+  /** One batch (up to API cap) so toolbar search / filter row apply to the full loaded slice, not a single server page. */
   const movementsStore = useMemo(() => {
     if (!productId) {
       return new CustomStore({
@@ -71,16 +72,14 @@ export default function StockPage() {
     }
     return new CustomStore({
       key: "id",
-      load: async (loadOptions) => {
-        const skip = loadOptions.skip ?? 0;
-        const take = loadOptions.take ?? 50;
+      load: async () => {
         const res = (await apiFetch(
-          `/api/products/${productId}/movements?skip=${skip}&take=${take}`,
+          `/api/products/${productId}/movements?skip=0&take=5000`,
         )) as {
           items: MovementRow[];
           total: number;
         };
-        return { data: res.items, totalCount: res.total };
+        return { data: res.items, totalCount: res.items.length };
       },
     });
   }, [productId]);
@@ -129,12 +128,13 @@ export default function StockPage() {
         <div className="stock-toolbar__grow">
           <SelectBox
             dataSource={products}
-            displayExpr="name"
+            displayExpr={(p: Product) => `${p.sku} — ${p.name}`}
             valueExpr="id"
             value={productId}
             onValueChanged={onProductChange}
             searchEnabled
-            placeholder="Product"
+            showDropDownButton
+            placeholder="Search product…"
           />
         </div>
         {selectedProduct ? (
@@ -157,7 +157,6 @@ export default function StockPage() {
           className="stock-movements-grid"
           persistenceKey="itm-grid-stock-movements"
           dataSource={movementsStore}
-          remoteOperations={{ paging: true }}
           height="100%"
         >
           <FilterRow visible />
@@ -200,6 +199,7 @@ export default function StockPage() {
               dataSource: [...MOVEMENT_TYPE_OPTIONS],
               displayExpr: "text",
               valueExpr: "value",
+              searchEnabled: true,
             }}
           >
             <Label text="Type" />

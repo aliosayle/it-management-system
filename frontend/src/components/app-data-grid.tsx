@@ -11,6 +11,9 @@ import DataGrid, {
 export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   /** When set, column order / width / filters persist in localStorage */
   persistenceKey?: string;
+  /** Toolbar search box width (default 360) */
+  searchPanelWidth?: number;
+  searchPlaceholder?: string;
 };
 
 /** DevExtreme DataGrid with search, header filters, column chooser, reorder, export, optional state. */
@@ -25,6 +28,8 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       allowColumnReordering,
       columnMinWidth,
       persistenceKey,
+      searchPanelWidth,
+      searchPlaceholder,
       children,
       ...rest
     },
@@ -42,7 +47,12 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         allowColumnReordering={allowColumnReordering ?? true}
         {...rest}
       >
-        <SearchPanel visible highlightCaseSensitive={false} width={220} />
+        <SearchPanel
+          visible
+          highlightCaseSensitive={false}
+          width={searchPanelWidth ?? 360}
+          placeholder={searchPlaceholder ?? "Search this list…"}
+        />
         <HeaderFilter visible allowSearch />
         <ColumnChooser enabled mode="select" />
         <Export enabled allowExportSelectedData />
