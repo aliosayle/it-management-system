@@ -9,10 +9,12 @@ export function movementJson(m: {
   balanceAfter: Prisma.Decimal;
   note: string | null;
   createdAt: Date;
+  purchaseId?: string | null;
 }) {
   return {
     ...m,
     quantity: Number(m.quantity),
     balanceAfter: Number(m.balanceAfter),
+    purchaseId: m.purchaseId ?? null,
   };
 }

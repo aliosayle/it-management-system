@@ -15,7 +15,9 @@ export function setToken(token: string | null) {
 export async function apiFetch(path: string, init?: RequestInit): Promise<unknown> {
   const headers = new Headers(init?.headers);
   const hasBody = init?.body !== undefined && init?.body !== null;
-  if (hasBody && !headers.has("Content-Type")) {
+  const isFormData =
+    typeof FormData !== "undefined" && init?.body instanceof FormData;
+  if (hasBody && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   const t = getToken();
@@ -40,4 +42,28 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<unknow
     return null;
   }
   return JSON.parse(text) as unknown;
+}
+
+/** Authenticated GET returning raw bytes (e.g. file download). */
+export async function apiFetchBlob(path: string): Promise<Blob> {
+  const headers = new Headers();
+  const t = getToken();
+  if (t) {
+    headers.set("Authorization", `Bearer ${t}`);
+  }
+  const res = await fetch(path, { headers });
+  if (!res.ok) {
+    const text = await res.text();
+    let message = text || res.statusText;
+    try {
+      const j = JSON.parse(text) as { error?: unknown };
+      if (j && typeof j.error === "string") {
+        message = j.error;
+      }
+    } catch {
+      /* keep text */
+    }
+    throw new Error(message);
+  }
+  return res.blob();
 }

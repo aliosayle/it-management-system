@@ -3,11 +3,7 @@ import { z } from "zod";
 import { MovementType, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { movementJson } from "../lib/movement-format.js";
-import {
-  isAdjustMovement,
-  isInboundMovement,
-  isOutboundMovement,
-} from "../lib/movement-kinds.js";
+import { applyStockMovementInTransaction } from "../lib/warehouse-inbound.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -33,55 +29,16 @@ router.post("/movements", async (req, res) => {
   const q = new Prisma.Decimal(quantity);
 
   try {
-    const row = await prisma.$transaction(async (tx) => {
-      const product = await tx.product.findUnique({ where: { id: productId } });
-      if (!product) {
-        throw Object.assign(new Error("Product not found"), { code: "NOT_FOUND" });
-      }
-
-      const current = new Prisma.Decimal(product.quantityOnHand.toString());
-      let newBalance: Prisma.Decimal;
-      let storedQty: Prisma.Decimal;
-
-      if (isInboundMovement(type)) {
-        newBalance = current.plus(q);
-        storedQty = q;
-      } else if (isOutboundMovement(type)) {
-        if (current.comparedTo(q) < 0) {
-          throw Object.assign(new Error("Insufficient stock"), {
-            code: "INSUFFICIENT",
-          });
-        }
-        newBalance = current.minus(q);
-        storedQty = q;
-      } else if (isAdjustMovement(type)) {
-        newBalance = q;
-        storedQty = q;
-      } else {
-        throw Object.assign(new Error("Unsupported movement type"), {
-          code: "BAD_TYPE",
-        });
-      }
-
-      await tx.product.update({
-        where: { id: productId },
-        data: { quantityOnHand: newBalance },
-      });
-
-      return tx.stockMovement.create({
-        data: {
-          productId,
-          userId,
-          type,
-          quantity: storedQty,
-          balanceAfter: newBalance,
-          note: note ?? undefined,
-        },
-        include: {
-          user: { select: { id: true, email: true, displayName: true } },
-        },
-      });
-    });
+    const row = await prisma.$transaction(async (tx) =>
+      applyStockMovementInTransaction(tx, {
+        productId,
+        userId,
+        type,
+        quantity: q,
+        note,
+        purchaseId: null,
+      }),
+    );
 
     res.status(201).json({
       ...movementJson(row),

@@ -34,6 +34,7 @@ type MovementRow = {
   quantity: number;
   balanceAfter: number;
   note: string | null;
+  purchaseId: string | null;
   createdAt: string;
   user?: { displayName: string; email: string };
 };
@@ -169,6 +170,7 @@ export default function StockPage() {
           />
           <Column dataField="quantity" dataType="number" />
           <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
+          <Column dataField="purchaseId" caption="Purchase" width={120} />
           <Column dataField="note" />
           <Column
             caption="User"

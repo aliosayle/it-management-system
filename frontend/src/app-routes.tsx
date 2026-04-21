@@ -6,6 +6,7 @@ import {
   PersonnelPage,
   ProductsPage,
   StockPage,
+  PurchasesPage,
 } from "./pages";
 import { withNavigationWatcher } from "./contexts/navigation-hooks";
 
@@ -16,6 +17,7 @@ const routeData = [
   { path: "/personnel", element: PersonnelPage },
   { path: "/products", element: ProductsPage },
   { path: "/stock", element: StockPage },
+  { path: "/purchases", element: PurchasesPage },
   { path: "/users", element: UsersPage },
 ];
 

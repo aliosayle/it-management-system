@@ -22,6 +22,11 @@ enum MovementType {
   LOSS
 }
 
+enum PurchaseDestination {
+  STOCK
+  PERSONNEL_BIN
+}
+
 model User {
   id             String          @id @default(cuid())
   email          String          @unique
@@ -32,6 +37,7 @@ model User {
   updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
   personnel      Personnel?
+  purchases      Purchase[]
 }
 
 model Company {
@@ -66,6 +72,8 @@ model Personnel {
   userId    String?            @unique
   user      User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   binItems  PersonnelBinItem[]
+  purchasesAuthorized Purchase[] @relation("PurchaseAuthorizer")
+  purchasesBinTarget  Purchase[] @relation("PurchaseBinTarget")
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
@@ -82,6 +90,7 @@ model Product {
   updatedAt          DateTime           @updatedAt
   stockMovements     StockMovement[]
   personnelBinItems  PersonnelBinItem[]
+  purchaseLines      PurchaseLine[]
 }
 
 /// Personal catalog per personnel member (not warehouse stock).
@@ -101,6 +110,40 @@ model PersonnelBinItem {
   @@index([productId])
 }
 
+model Purchase {
+  id                      String              @id @default(cuid())
+  destination             PurchaseDestination
+  authorizedByPersonnelId String
+  authorizedBy            Personnel           @relation("PurchaseAuthorizer", fields: [authorizedByPersonnelId], references: [id])
+  targetPersonnelId     String?
+  targetPersonnel         Personnel?          @relation("PurchaseBinTarget", fields: [targetPersonnelId], references: [id], onDelete: SetNull)
+  bonStoredPath           String              @db.VarChar(1024)
+  bonOriginalName         String              @db.VarChar(512)
+  notes                   String?             @db.Text
+  createdByUserId       String
+  createdBy               User                @relation(fields: [createdByUserId], references: [id])
+  lines                   PurchaseLine[]
+  stockMovements        StockMovement[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([authorizedByPersonnelId])
+  @@index([createdAt])
+}
+
+model PurchaseLine {
+  id         String   @id @default(cuid())
+  purchaseId String
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Decimal  @db.Decimal(14, 4)
+  lineIndex  Int      @default(0)
+
+  @@index([purchaseId])
+  @@index([productId])
+}
+
 /// IN/RETURN/FOUND: units received. OUT/SCRAP/LOSS: units removed. ADJUST: `quantity` is the new on-hand level.
 model StockMovement {
   id           String       @id @default(cuid())
@@ -112,8 +155,11 @@ model StockMovement {
   quantity     Decimal      @db.Decimal(14, 4)
   balanceAfter Decimal      @db.Decimal(14, 4)
   note         String?      @db.Text
+  purchaseId   String?
+  purchase     Purchase?    @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
   createdAt    DateTime     @default(now())
 
   @@index([productId])
   @@index([createdAt])
+  @@index([purchaseId])
 }
