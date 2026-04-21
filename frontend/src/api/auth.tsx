@@ -72,13 +72,6 @@ export async function getUser() {
   }
 }
 
-export async function createAccount(_email: string, _password: string) {
-  return {
-    isOk: false as const,
-    message: "Registration is disabled in this MVP",
-  };
-}
-
 export async function changePassword(_email: string, _recoveryCode?: string) {
   return {
     isOk: false as const,

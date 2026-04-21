@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Form, {
   Item,
   Label,
@@ -10,14 +10,12 @@ import Form, {
   type FormTypes,
 } from 'devextreme-react/form';
 import LoadIndicator from 'devextreme-react/load-indicator';
-import Button from 'devextreme-react/button';
 import notify from 'devextreme/ui/notify';
 import { useAuth } from '../../contexts/auth-hooks';
 
 import './LoginForm.scss';
 
 export default function LoginForm() {
-  const navigate = useNavigate();
   const { signIn } = useAuth();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -44,10 +42,6 @@ export default function LoginForm() {
       notify(result.message, 'error', 2000);
     }
   }, [signIn, formData]);
-
-  const onCreateAccountClick = useCallback(() => {
-    navigate('/create-account');
-  }, [navigate]);
 
   return (
     <form className={'login-form'} onSubmit={onSubmit}>
@@ -95,12 +89,6 @@ export default function LoginForm() {
       <div className={'link'}>
         <Link to={'/reset-password'}>Forgot password?</Link>
       </div>
-      <Button
-        text={'Create an account'}
-        stylingMode={ 'outlined' }
-        width={'100%'}
-        onClick={onCreateAccountClick}
-      />
     </form>
   );
 }

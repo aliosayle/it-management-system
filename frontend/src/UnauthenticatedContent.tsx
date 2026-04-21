@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { SingleCard } from './layouts';
-import { LoginForm, ResetPasswordForm, ChangePasswordForm, CreateAccountForm } from './components';
+import { LoginForm, ResetPasswordForm, ChangePasswordForm } from './components';
 
 export default function UnauthenticatedContent() {
   return (
@@ -10,14 +10,6 @@ export default function UnauthenticatedContent() {
         element={
           <SingleCard title="Sign In">
             <LoginForm />
-          </SingleCard>
-        }
-      />
-      <Route
-        path='/create-account'
-        element={
-          <SingleCard title="Sign Up">
-            <CreateAccountForm />
           </SingleCard>
         }
       />

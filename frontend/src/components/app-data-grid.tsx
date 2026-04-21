@@ -38,6 +38,8 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       searchPlaceholder,
       showAddRowButton,
       toolbarItems,
+      showColumnLines,
+      showRowLines,
       children,
       searchPanel: searchPanelProp,
       export: exportProp,
@@ -73,6 +75,8 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         ref={ref}
         className={["dx-datagrid-app", "dx-card", "wide-card", className].filter(Boolean).join(" ")}
         showBorders={showBorders ?? true}
+        showColumnLines={showColumnLines ?? true}
+        showRowLines={showRowLines ?? true}
         rowAlternationEnabled={rowAlternationEnabled ?? true}
         columnAutoWidth={columnAutoWidth ?? true}
         columnMinWidth={columnMinWidth ?? 64}
