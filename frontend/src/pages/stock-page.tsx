@@ -53,7 +53,12 @@ export default function StockPage() {
   const loadProducts = useCallback(async () => {
     const list = (await apiFetch("/api/products")) as Product[];
     setProducts(list);
-    setProductId((prev) => prev ?? list[0]?.id ?? null);
+    setProductId((prev) => {
+      if (prev && list.some((p) => p.id === prev)) {
+        return prev;
+      }
+      return list[0]?.id ?? null;
+    });
   }, []);
 
   useEffect(() => {
@@ -128,7 +133,9 @@ export default function StockPage() {
         <div className="stock-toolbar__grow">
           <SelectBox
             dataSource={products}
-            displayExpr={(p: Product) => `${p.sku} — ${p.name}`}
+            displayExpr={(p: Product | null | undefined) =>
+              p ? `${p.sku} — ${p.name}` : ""
+            }
             valueExpr="id"
             value={productId}
             onValueChanged={onProductChange}
