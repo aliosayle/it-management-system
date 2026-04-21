@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUST
+  RETURN
+  FOUND
+  SCRAP
+  LOSS
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  passwordHash   String
+  displayName    String
+  role           Role            @default(USER)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  stockMovements StockMovement[]
+  personnel      Personnel?
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sites     Site[]
+}
+
+model Site {
+  id        String      @id @default(cuid())
+  companyId String
+  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  personnel Personnel[]
+
+  @@index([companyId])
+}
+
+/// People managed in IT (bins, sites, etc.). `user` is optional—only if they should log into this app.
+model Personnel {
+  id        String             @id @default(cuid())
+  siteId    String
+  site      Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  userId    String?            @unique
+  user      User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  binItems  PersonnelBinItem[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([siteId])
+}
+
+model Product {
+  id                 String             @id @default(cuid())
+  sku                String             @unique
+  name               String
+  description        String?
+  quantityOnHand     Decimal            @default(0) @db.Decimal(14, 4)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  stockMovements     StockMovement[]
+  personnelBinItems  PersonnelBinItem[]
+}
+
+/// Personal catalog per personnel member (not warehouse stock).
+model PersonnelBinItem {
+  id          String    @id @default(cuid())
+  personnelId String
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity    Decimal   @default(1) @db.Decimal(14, 4)
+  note        String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([personnelId, productId])
+  @@index([personnelId])
+  @@index([productId])
+}
+
+/// IN/RETURN/FOUND: units received. OUT/SCRAP/LOSS: units removed. ADJUST: `quantity` is the new on-hand level.
+model StockMovement {
+  id           String       @id @default(cuid())
+  productId    String
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User         @relation(fields: [userId], references: [id])
+  type         MovementType
+  quantity     Decimal      @db.Decimal(14, 4)
+  balanceAfter Decimal      @db.Decimal(14, 4)
+  note         String?      @db.Text
+  createdAt    DateTime     @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+}

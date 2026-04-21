@@ -1,0 +1,19 @@
+.footer {
+  display: block;
+  color: var(--base-text-color-alpha-7);
+  border-top: 1px solid var(--footer-border-color);
+  padding-top: 8px;
+  padding-bottom: 10px;
+  margin: 0 40px;
+  font-size: 11px;
+  line-height: 1.35;
+
+  .screen-x-small & {
+    margin: 0 20px;
+  }
+
+  .footer-attribution {
+    margin-top: 4px;
+    opacity: 0.85;
+  }
+}
