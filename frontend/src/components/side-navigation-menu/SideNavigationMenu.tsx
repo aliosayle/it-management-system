@@ -1,13 +1,36 @@
 import React, { useEffect, useRef, useCallback, useMemo, useContext } from 'react';
 import { TreeView, type TreeViewRef } from 'devextreme-react/tree-view';
 import * as events from 'devextreme-react/common/core/events';
-import { navigation } from '../../app-navigation';
+import { navigation, type NavItem } from '../../app-navigation';
 import { useNavigation } from '../../contexts/navigation-hooks';
 import { useScreenSize } from '../../utils/media-query';
 import './SideNavigationMenu.scss';
 import type { SideNavigationMenuProps } from '../../types';
 
 import { ThemeContext } from '../../theme';
+
+function normalizePaths(items: NavItem[]): NavItem[] {
+  return items.map((item) => {
+    const path =
+      item.path && !/^\//.test(item.path) && !item.path.startsWith('__')
+        ? `/${item.path}`
+        : item.path;
+    const next: NavItem = {
+      ...item,
+      path,
+      items: item.items ? normalizePaths(item.items) : undefined,
+    };
+    return next;
+  });
+}
+
+function withExpandedState(items: NavItem[], isLarge: boolean): NavItem[] {
+  return items.map((item) => ({
+    ...item,
+    expanded: item.items ? isLarge : undefined,
+    items: item.items ? withExpandedState(item.items, isLarge) : undefined,
+  }));
+}
 
 export default function SideNavigationMenu(props: React.PropsWithChildren<SideNavigationMenuProps>) {
   const {
@@ -20,16 +43,10 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
 
   const theme = useContext(ThemeContext);
   const { isLarge } = useScreenSize();
-  function normalizePath () {
-    return navigation.map((item) => (
-      { ...item, expanded: isLarge, path: item.path && !(/^\//.test(item.path)) ? `/${item.path}` : item.path }
-    ))
-  }
 
   const items = useMemo(
-    normalizePath,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    () => withExpandedState(normalizePaths(navigation), isLarge),
+    [isLarge],
   );
 
   const { navigationData: { currentPath } } = useNavigation();
@@ -54,7 +71,7 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
       return;
     }
 
-    if (currentPath !== undefined) {
+    if (currentPath !== undefined && currentPath.startsWith('/')) {
       treeView.selectItem(currentPath);
       treeView.expandItem(currentPath);
     }

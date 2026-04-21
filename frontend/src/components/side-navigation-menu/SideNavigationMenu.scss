@@ -54,14 +54,24 @@
         }
         // ##
 
-        // ## Item levels customization
+        // ## Item levels: section groups (L1) vs routes (L2)
         .dx-treeview-node {
-          &[aria-level="1"] {
-            font-weight: bold;
+          &[aria-level="1"] > .dx-treeview-item {
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--base-text-color-alpha-7);
+            padding-top: 10px;
+            padding-bottom: 4px;
           }
 
           &[aria-level="2"] .dx-treeview-item-content {
             font-weight: normal;
+            font-size: 14px;
+            text-transform: none;
+            letter-spacing: normal;
+            color: inherit;
             padding: 0 $side-panel-min-width;
           }
         }

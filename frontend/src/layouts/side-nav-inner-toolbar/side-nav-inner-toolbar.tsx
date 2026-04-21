@@ -49,12 +49,17 @@ export default function SideNavInnerToolbar({ title, children }: React.PropsWith
   }, [isLarge, menuStatus]);
 
   const onNavigationChanged = useCallback(({ itemData, event, node }: TreeViewTypes.ItemClickEvent) => {
-    if (menuStatus === MenuStatus.Closed || !itemData?.path || node?.selected) {
+    const path = itemData?.path as string | undefined;
+    const isRoute = typeof path === 'string' && path.startsWith('/');
+    if (!isRoute) {
+      return;
+    }
+    if (menuStatus === MenuStatus.Closed || node?.selected) {
       event?.preventDefault();
       return;
     }
 
-    navigate(itemData.path);
+    navigate(path);
     scrollViewRef.current?.instance().scrollTo(0);
 
     if (!isLarge || menuStatus === MenuStatus.TemporaryOpened) {
