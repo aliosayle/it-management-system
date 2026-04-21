@@ -107,7 +107,7 @@ export default function ProductsPage() {
 
   const openAssignPopup = useCallback(async () => {
     try {
-      const { personnel, products } = await loadAssignMeta();
+      await loadAssignMeta();
       const inst = gridRef.current?.instance();
       const key = inst?.option("focusedRowKey") as string | undefined;
       const row =
@@ -119,8 +119,8 @@ export default function ProductsPage() {
         : undefined;
 
       setAssignForm({
-        personnelId: personnel[0]?.id ?? null,
-        productId: productFromRow ?? products[0]?.id ?? null,
+        personnelId: null,
+        productId: productFromRow ?? null,
         quantity: 1,
         note: "",
       });
@@ -253,6 +253,7 @@ export default function ProductsPage() {
               valueExpr: "id",
               searchEnabled: true,
               showDropDownButton: true,
+              showClearButton: true,
               placeholder: "Search personnel…",
             }}
           >
@@ -268,6 +269,7 @@ export default function ProductsPage() {
               valueExpr: "id",
               searchEnabled: true,
               showDropDownButton: true,
+              showClearButton: true,
               placeholder: "Search product…",
             }}
           >

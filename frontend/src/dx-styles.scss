@@ -104,32 +104,50 @@ body {
     }
   }
 
-  /* Compact DevExtreme grids (AppDataGrid): tight rows + column/row lines via props + borders */
+  /* Compact DevExtreme grids (AppDataGrid): minimal row height + column/row lines */
   .dx-datagrid-app.dx-datagrid {
     font-size: 12px;
-    line-height: 1.2;
+    line-height: 1.1;
 
     .dx-datagrid-headers .dx-datagrid-table .dx-row > td {
-      padding: 2px 6px;
+      padding: 0 5px;
       vertical-align: middle;
     }
 
     .dx-datagrid-rowsview .dx-data-row > td,
     .dx-datagrid-rowsview .dx-adaptive-detail-row > td {
-      padding: 1px 6px;
+      padding: 0 5px;
       vertical-align: middle;
     }
 
     .dx-datagrid-rowsview .dx-data-row {
-      line-height: 1.15;
+      line-height: 1.1;
     }
 
     .dx-datagrid-rowsview .dx-master-detail-row > td {
-      padding: 4px 6px;
+      padding: 2px 5px;
     }
 
     .dx-datagrid-filter-row .dx-editor-cell {
-      padding: 1px 4px;
+      padding: 0 3px;
+    }
+
+    /* Shorter editors inside grid cells (Fluent default ~32px) */
+    .dx-datagrid-rowsview .dx-texteditor,
+    .dx-datagrid-filter-row .dx-texteditor {
+      min-height: 22px;
+    }
+
+    .dx-datagrid-rowsview .dx-texteditor.dx-editor-outlined,
+    .dx-datagrid-filter-row .dx-texteditor.dx-editor-outlined {
+      border-radius: 4px;
+    }
+
+    .dx-datagrid-rowsview .dx-texteditor-input,
+    .dx-datagrid-filter-row .dx-texteditor-input {
+      min-height: 20px;
+      padding-top: 0;
+      padding-bottom: 0;
     }
 
     .dx-datagrid-search-panel {
@@ -142,10 +160,9 @@ body {
       font-size: 12px;
     }
 
-    /* Editing / command cells stay aligned with compact rows */
     .dx-datagrid-rowsview .dx-row.dx-edit-row > td {
-      padding-top: 1px;
-      padding-bottom: 1px;
+      padding-top: 0;
+      padding-bottom: 0;
     }
   }
 

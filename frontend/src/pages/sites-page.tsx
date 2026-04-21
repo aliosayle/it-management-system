@@ -89,6 +89,7 @@ export default function SitesPage() {
             valueExpr: "id",
             displayExpr: "name",
             allowSearch: true,
+            allowClearing: true,
           }}
         >
           <RequiredRule />

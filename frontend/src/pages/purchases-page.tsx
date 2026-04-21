@@ -69,7 +69,7 @@ export default function PurchasesPage() {
   const [personnel, setPersonnel] = useState<PersonnelRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [authorizerId, setAuthorizerId] = useState<string | null>(null);
-  const [destination, setDestination] = useState<"STOCK" | "PERSONNEL_BIN">("STOCK");
+  const [destination, setDestination] = useState<"STOCK" | "PERSONNEL_BIN" | null>(null);
   const [targetPersonnelId, setTargetPersonnelId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([{ productId: null, quantity: 1 }]);
@@ -87,7 +87,6 @@ export default function PurchasesPage() {
     ]);
     setPersonnel(pl);
     setProducts(pr);
-    setAuthorizerId((prev) => prev ?? pl[0]?.id ?? null);
   }, []);
 
   useEffect(() => {
@@ -124,15 +123,15 @@ export default function PurchasesPage() {
   );
 
   const resetForm = useCallback(() => {
-    setAuthorizerId(personnel[0]?.id ?? null);
-    setDestination("STOCK");
+    setAuthorizerId(null);
+    setDestination(null);
     setTargetPersonnelId(null);
     setNotes("");
-    setLines([{ productId: products[0]?.id ?? null, quantity: 1 }]);
+    setLines([{ productId: null, quantity: 1 }]);
     setBonFile(null);
     setExistingBonName(null);
     setEditingId(null);
-  }, [personnel, products]);
+  }, []);
 
   const openCreate = useCallback(() => {
     resetForm();
@@ -148,11 +147,11 @@ export default function PurchasesPage() {
     setLines(
       d.lines.length > 0
         ? d.lines.map((l) => ({ productId: l.productId, quantity: l.quantity }))
-        : [{ productId: products[0]?.id ?? null, quantity: 1 }],
+        : [{ productId: null, quantity: 1 }],
     );
     setBonFile(null);
     setExistingBonName(d.bonOriginalName);
-  }, [products]);
+  }, []);
 
   const openEdit = useCallback(
     async (row: PurchaseListRow) => {
@@ -175,8 +174,8 @@ export default function PurchasesPage() {
   }, []);
 
   const addLine = useCallback(() => {
-    setLines((prev) => [...prev, { productId: products[0]?.id ?? null, quantity: 1 }]);
-  }, [products]);
+    setLines((prev) => [...prev, { productId: null, quantity: 1 }]);
+  }, []);
 
   const removeLine = useCallback((index: number) => {
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
@@ -189,6 +188,10 @@ export default function PurchasesPage() {
   const submitPurchase = useCallback(async () => {
     if (!authorizerId) {
       notify("Select who authorized the purchase", "warning", 2500);
+      return;
+    }
+    if (!destination) {
+      notify("Select a destination", "warning", 2500);
       return;
     }
     if (destination === "PERSONNEL_BIN" && !targetPersonnelId) {
@@ -404,6 +407,7 @@ export default function PurchasesPage() {
               onValueChanged={(e) => setAuthorizerId(e.value ?? null)}
               searchEnabled
               showDropDownButton
+              showClearButton
               placeholder="Search personnel…"
             />
           </div>
@@ -415,9 +419,11 @@ export default function PurchasesPage() {
               valueExpr="value"
               value={destination}
               onValueChanged={(e) =>
-                setDestination((e.value as "STOCK" | "PERSONNEL_BIN") ?? "STOCK")
+                setDestination((e.value as "STOCK" | "PERSONNEL_BIN" | null) ?? null)
               }
               searchEnabled
+              showClearButton
+              placeholder="Choose destination…"
               disabled={isEdit}
             />
           </div>
@@ -432,6 +438,7 @@ export default function PurchasesPage() {
                 onValueChanged={(e) => setTargetPersonnelId(e.value ?? null)}
                 searchEnabled
                 showDropDownButton
+                showClearButton
                 placeholder="Search personnel…"
               />
             </div>
@@ -474,6 +481,7 @@ export default function PurchasesPage() {
                 onValueChanged={(e) => updateLine(index, { productId: e.value ?? null })}
                 searchEnabled
                 showDropDownButton
+                showClearButton
                 placeholder="Search product…"
               />
               <NumberBox

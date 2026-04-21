@@ -112,6 +112,7 @@ export function PersonnelBinPopup({
             valueExpr: "id",
             displayExpr: "label",
             allowSearch: true,
+            allowClearing: true,
           }}
         >
           <RequiredRule />

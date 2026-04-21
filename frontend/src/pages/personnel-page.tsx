@@ -121,11 +121,7 @@ export default function PersonnelPage() {
             notify(err instanceof Error ? err.message : "Failed to load form options", "error", 4000);
           });
         }}
-        onInitNewRow={(e) => {
-          const d = e.data as { siteId?: string };
-          if (meta?.sites?.length && !d.siteId) {
-            d.siteId = meta.sites[0].id;
-          }
+        onInitNewRow={() => {
           loadFormMeta().catch((err: unknown) => {
             notify(err instanceof Error ? err.message : "Failed to load form options", "error", 4000);
           });
@@ -162,6 +158,7 @@ export default function PersonnelPage() {
             valueExpr: "id",
             displayExpr: "label",
             allowSearch: true,
+            allowClearing: true,
           }}
         >
           <RequiredRule />

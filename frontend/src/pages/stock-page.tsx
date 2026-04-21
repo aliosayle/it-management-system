@@ -45,8 +45,12 @@ export default function StockPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState<string | null>(null);
   const [popupOpen, setPopupOpen] = useState(false);
-  const [movementForm, setMovementForm] = useState({
-    type: "IN" as MovementTypeValue,
+  const [movementForm, setMovementForm] = useState<{
+    type: MovementTypeValue | null;
+    quantity: number;
+    note: string;
+  }>({
+    type: null,
     quantity: 1,
     note: "",
   });
@@ -58,7 +62,7 @@ export default function StockPage() {
       if (prev && list.some((p) => p.id === prev)) {
         return prev;
       }
-      return list[0]?.id ?? null;
+      return null;
     });
   }, []);
 
@@ -105,6 +109,10 @@ export default function StockPage() {
       notify("Select a product", "warning", 2000);
       return;
     }
+    if (!movementForm.type) {
+      notify("Select a movement type", "warning", 2000);
+      return;
+    }
     try {
       await apiFetch("/api/stock/movements", {
         method: "POST",
@@ -117,7 +125,7 @@ export default function StockPage() {
       });
       notify("Movement saved", "success", 2000);
       setPopupOpen(false);
-      setMovementForm({ type: "IN", quantity: 1, note: "" });
+      setMovementForm({ type: null, quantity: 1, note: "" });
       await loadProducts();
       gridRef.current?.instance().refresh();
     } catch (e: unknown) {
@@ -144,6 +152,7 @@ export default function StockPage() {
               onValueChanged={onProductChange}
               searchEnabled
               showDropDownButton
+              showClearButton
               placeholder="Search product…"
               width="100%"
             />
@@ -158,7 +167,10 @@ export default function StockPage() {
             type="default"
             stylingMode="contained"
             icon="add"
-            onClick={() => setPopupOpen(true)}
+            onClick={() => {
+              setMovementForm({ type: null, quantity: 1, note: "" });
+              setPopupOpen(true);
+            }}
             disabled={!productId}
           />
         </div>
@@ -223,6 +235,8 @@ export default function StockPage() {
               displayExpr: "text",
               valueExpr: "value",
               searchEnabled: true,
+              showClearButton: true,
+              placeholder: "Select type…",
             }}
           >
             <Label text="Type" />

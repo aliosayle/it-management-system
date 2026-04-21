@@ -75,9 +75,6 @@ export default function UsersPage() {
         dataSource={dataSource}
         repaintChangesOnly
         height="100%"
-        onInitNewRow={(e) => {
-          (e.data as { role?: string }).role = "USER";
-        }}
         onEditorPreparing={(e) => {
           if (e.dataField !== "password" || e.parentType !== "dataRow") {
             return;
@@ -128,6 +125,7 @@ export default function UsersPage() {
             valueExpr: "value",
             displayExpr: "text",
             allowSearch: true,
+            allowClearing: true,
           }}
         >
           <RequiredRule />
