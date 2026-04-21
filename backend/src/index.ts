@@ -12,12 +12,16 @@ import personnelRoutes from "./routes/personnel.js";
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
-const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
+const host = process.env.HOST ?? "0.0.0.0";
+const frontendOrigins = (process.env.FRONTEND_ORIGIN || "http://localhost:5173")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 app.use(helmet());
 app.use(
   cors({
-    origin: frontendOrigin,
+    origin: frontendOrigins.length === 1 ? frontendOrigins[0] : frontendOrigins,
     credentials: true,
   }),
 );
@@ -47,6 +51,6 @@ app.use(
   },
 );
 
-app.listen(port, () => {
-  console.log(`API listening on http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`API listening on http://${host}:${port}`);
 });

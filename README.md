@@ -17,7 +17,8 @@ DevExtreme React UI with an Express + Prisma + **system MySQL** API. No Docker d
    - `DATABASE_URL` — `mysql://USER:PASSWORD@localhost:3306/it_management` (adjust user, password, host, port, database name)
    - `JWT_SECRET` — a long random string
    - `PORT` — API port (default `3001`)
-   - `FRONTEND_ORIGIN` — Vite dev server (default `http://localhost:5173`)
+   - `FRONTEND_ORIGIN` — Browser origin(s) allowed by CORS (default `http://localhost:5173`). **Comma-separated** if you open the app from another device, e.g. `http://localhost:5173,http://192.168.0.10:5173`.
+   - `HOST` — API bind address (default `0.0.0.0` so the API is reachable on the LAN; set to `127.0.0.1` to block non-local access).
 
 2. **Database migrations and seed**
 
@@ -54,6 +55,15 @@ DevExtreme React UI with an Express + Prisma + **system MySQL** API. No Docker d
 5. **Open the app**
 
    Use the URL Vite prints (usually `http://localhost:5173`). Sign in with the seeded admin user.
+
+### Access from another device on your network (dev)
+
+1. **Vite** is configured with `server.host: true` so it listens on all interfaces.
+2. **API** listens on `0.0.0.0` by default (see `HOST` in `.env`).
+3. Add your machine’s LAN URL to **`FRONTEND_ORIGIN`**, comma-separated with localhost, e.g.  
+   `FRONTEND_ORIGIN=http://localhost:5173,http://192.168.1.50:5173`  
+   (replace with your server’s IP and the port Vite shows — often `5173`).
+4. From another PC or phone, open `http://<server-ip>:5173`. Ensure the firewall allows inbound TCP on the Vite and API ports if needed.
 
 ## Default seeded credentials
 
