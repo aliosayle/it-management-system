@@ -29,6 +29,12 @@
 
     --shadow-color-first: rgba(0, 0, 0, 0.06);
     --shadow-color-second: rgba(0, 0, 0, 0.12);
+
+    /* App shell */
+    --app-border-subtle: rgba(15, 23, 42, 0.08);
+    --app-card-shadow: 0 1px 0 rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
+    --app-radius-lg: 12px;
+    --app-radius-md: 8px;
   }
 
   .dx-swatch-additional {
@@ -45,6 +51,11 @@
     --shadow-color-first: rgba(0, 0, 0, 0.12);
     --shadow-color-second: rgba(0, 0, 0, 0.24);
     --footer-border-color: rgba(97, 97, 97, 1);
+
+    --app-border-subtle: rgba(255, 255, 255, 0.1);
+    --app-card-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.35);
+    --app-radius-lg: 12px;
+    --app-radius-md: 8px;
   }
 
   .dx-swatch-additional-dark {

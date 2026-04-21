@@ -1,0 +1,34 @@
+/* App-wide polish layered on DevExtreme Fluent swatches */
+
+.dx-viewport .app {
+  background: var(--base-bg-darken-5);
+}
+
+/* Softer main surface behind content */
+.dx-viewport .side-nav-outer-toolbar .layout-main-with-footer {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--base-bg) 92%, var(--base-accent) 8%) 0%,
+    var(--base-bg) 28%,
+    var(--base-bg) 100%
+  );
+}
+
+.dx-swatch-dark.dx-viewport .side-nav-outer-toolbar .layout-main-with-footer {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--base-bg) 94%, var(--base-accent) 6%) 0%,
+    var(--base-bg) 32%,
+    var(--base-bg) 100%
+  );
+}
+
+/* Unauthenticated routes: subtle branded backdrop */
+.dx-viewport .single-card.with-footer {
+  background: radial-gradient(
+    ellipse 120% 80% at 50% -20%,
+    color-mix(in srgb, var(--base-accent) 22%, transparent),
+    transparent 55%
+  ),
+    var(--base-bg-darken-5);
+}
