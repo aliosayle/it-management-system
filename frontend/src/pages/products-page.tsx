@@ -8,6 +8,7 @@ import {
   Editing,
   Popup,
   RequiredRule,
+  Item as GridToolbarItem,
   type DataGridRef,
 } from "devextreme-react/data-grid";
 import Button from "devextreme-react/button";
@@ -157,16 +158,8 @@ export default function ProductsPage() {
 
   return (
     <div className="content-block content-block--fill">
-      <div className="stock-toolbar">
-        <h2 style={{ margin: 0, marginRight: 8 }}>Products</h2>
-        <Button
-          text="Assign to personnel bin"
-          type="default"
-          stylingMode="contained"
-          icon="user"
-          onClick={openAssignPopup}
-          disabled={personnelOptions.length === 0 || productOptions.length === 0}
-        />
+      <div className="page-toolbar">
+        <h2>Products</h2>
       </div>
 
       <div className="page-grid-body">
@@ -177,6 +170,22 @@ export default function ProductsPage() {
         repaintChangesOnly
         focusedRowEnabled
         height="100%"
+        toolbarItems={
+          <GridToolbarItem
+            location="before"
+            widget="dxButton"
+            options={{
+              text: "Assign to personnel bin",
+              type: "default",
+              stylingMode: "contained",
+              icon: "user",
+              disabled: personnelOptions.length === 0 || productOptions.length === 0,
+              onClick: () => {
+                void openAssignPopup();
+              },
+            }}
+          />
+        }
         onInitNewRow={(e) => {
           (e.data as { quantityOnHand?: number }).quantityOnHand = 0;
         }}

@@ -56,7 +56,9 @@ export default function UsersPage() {
   if (user?.role !== "ADMIN") {
     return (
       <div className="content-block">
-        <h2>Users</h2>
+        <div className="page-toolbar">
+          <h2>Users</h2>
+        </div>
         <p>Administrator access is required to manage users.</p>
       </div>
     );
@@ -64,7 +66,9 @@ export default function UsersPage() {
 
   return (
     <div className="content-block content-block--fill">
-      <h2>Users</h2>
+      <div className="page-toolbar">
+        <h2>Users</h2>
+      </div>
       <div className="page-grid-body">
       <AppDataGrid
         persistenceKey="itm-grid-users"

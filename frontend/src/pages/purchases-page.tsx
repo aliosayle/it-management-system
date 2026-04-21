@@ -6,6 +6,7 @@ import {
   Pager,
   FilterRow,
   ColumnButton,
+  Item as GridToolbarItem,
 } from "devextreme-react/data-grid";
 import Button from "devextreme-react/button";
 import Popup from "devextreme-react/popup";
@@ -303,15 +304,8 @@ export default function PurchasesPage() {
 
   return (
     <div className="content-block content-block--fill">
-      <div className="stock-toolbar">
-        <h2 style={{ margin: 0, marginRight: 8 }}>Purchases</h2>
-        <Button
-          text="Record purchase"
-          type="default"
-          stylingMode="contained"
-          icon="add"
-          onClick={openCreate}
-        />
+      <div className="page-toolbar">
+        <h2>Purchases</h2>
       </div>
 
       <div className="page-grid-body">
@@ -321,6 +315,20 @@ export default function PurchasesPage() {
           dataSource={dataSource}
           repaintChangesOnly
           height="100%"
+          showAddRowButton={false}
+          toolbarItems={
+            <GridToolbarItem
+              location="before"
+              widget="dxButton"
+              options={{
+                text: "Record purchase",
+                type: "default",
+                stylingMode: "contained",
+                icon: "add",
+                onClick: () => openCreate(),
+              }}
+            />
+          }
           onDataErrorOccurred={(e) => {
             notify((e.error as Error)?.message || "Request failed", "error", 4000);
           }}

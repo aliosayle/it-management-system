@@ -106,7 +106,9 @@ export default function PersonnelPage() {
 
   return (
     <div className="content-block content-block--fill">
-      <h2>Personnel</h2>
+      <div className="page-toolbar">
+        <h2>Personnel</h2>
+      </div>
       <div className="page-grid-body">
       <AppDataGrid
         persistenceKey="itm-grid-personnel"

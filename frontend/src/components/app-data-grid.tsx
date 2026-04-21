@@ -1,10 +1,9 @@
-import { forwardRef, type ComponentPropsWithoutRef } from "react";
+import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import DataGrid, {
   type DataGridRef,
-  SearchPanel,
+  Toolbar,
+  Item as ToolbarItem,
   HeaderFilter,
-  ColumnChooser,
-  Export,
   StateStoring,
 } from "devextreme-react/data-grid";
 
@@ -14,9 +13,16 @@ export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   /** Toolbar search box width (default 360) */
   searchPanelWidth?: number;
   searchPlaceholder?: string;
+  /**
+   * Show the grid "Add row" toolbar button (when editing allows adding).
+   * Set false for read-only grids or when add is a custom action only.
+   */
+  showAddRowButton?: boolean;
+  /** Extra toolbar items (e.g. custom buttons) rendered after Add, before search */
+  toolbarItems?: ReactNode;
 };
 
-/** DevExtreme DataGrid with search, header filters, column chooser, reorder, export, optional state. */
+/** DevExtreme DataGrid with toolbar: Add, optional extras, search, export, column chooser; header filters; optional state. */
 export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
   function AppDataGrid(
     {
@@ -30,11 +36,38 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       persistenceKey,
       searchPanelWidth,
       searchPlaceholder,
+      showAddRowButton,
+      toolbarItems,
       children,
+      searchPanel: searchPanelProp,
+      export: exportProp,
+      columnChooser: columnChooserProp,
       ...rest
     },
     ref,
   ) {
+    const searchPanel = {
+      visible: true,
+      highlightCaseSensitive: false,
+      width: searchPanelWidth ?? 360,
+      placeholder: searchPlaceholder ?? "Search this list…",
+      ...(typeof searchPanelProp === "object" && searchPanelProp !== null ? searchPanelProp : {}),
+    };
+
+    const exportOpts = {
+      enabled: true,
+      allowExportSelectedData: true,
+      ...(typeof exportProp === "object" && exportProp !== null ? exportProp : {}),
+    };
+
+    const columnChooserOpts = {
+      enabled: true,
+      mode: "select" as const,
+      ...(typeof columnChooserProp === "object" && columnChooserProp !== null
+        ? columnChooserProp
+        : {}),
+    };
+
     return (
       <DataGrid
         ref={ref}
@@ -45,17 +78,19 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         columnMinWidth={columnMinWidth ?? 64}
         width={width ?? "100%"}
         allowColumnReordering={allowColumnReordering ?? true}
+        searchPanel={searchPanel}
+        export={exportOpts}
+        columnChooser={columnChooserOpts}
         {...rest}
       >
-        <SearchPanel
-          visible
-          highlightCaseSensitive={false}
-          width={searchPanelWidth ?? 360}
-          placeholder={searchPlaceholder ?? "Search this list…"}
-        />
+        <Toolbar>
+          {showAddRowButton !== false ? <ToolbarItem name="addRowButton" location="before" /> : null}
+          {toolbarItems}
+          <ToolbarItem name="searchPanel" locateInMenu="auto" />
+          <ToolbarItem name="exportButton" locateInMenu="auto" />
+          <ToolbarItem name="columnChooserButton" locateInMenu="auto" />
+        </Toolbar>
         <HeaderFilter visible allowSearch />
-        <ColumnChooser enabled mode="select" />
-        <Export enabled allowExportSelectedData />
         {persistenceKey ? (
           <StateStoring
             enabled

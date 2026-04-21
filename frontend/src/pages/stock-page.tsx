@@ -5,6 +5,7 @@ import {
   Paging,
   Pager,
   FilterRow,
+  Item as GridToolbarItem,
   type DataGridRef,
 } from "devextreme-react/data-grid";
 import { AppDataGrid } from "../components/app-data-grid";
@@ -126,36 +127,49 @@ export default function StockPage() {
 
   const selectedProduct = products.find((p) => p.id === productId);
 
-  return (
-    <div className="content-block content-block--fill">
-      <div className="stock-toolbar">
-        <h2 style={{ margin: 0, marginRight: 8 }}>Stock</h2>
-        <div className="stock-toolbar__grow">
-          <SelectBox
-            dataSource={products}
-            displayExpr={(p: Product | null | undefined) =>
-              p ? `${p.sku} — ${p.name}` : ""
-            }
-            valueExpr="id"
-            value={productId}
-            onValueChanged={onProductChange}
-            searchEnabled
-            showDropDownButton
-            placeholder="Search product…"
+  const stockToolbarItems = (
+    <GridToolbarItem
+      location="before"
+      cssClass="stock-grid-toolbar-item"
+      render={() => (
+        <div className="stock-grid-toolbar">
+          <div className="stock-grid-toolbar__product">
+            <SelectBox
+              dataSource={products}
+              displayExpr={(p: Product | null | undefined) =>
+                p ? `${p.sku} — ${p.name}` : ""
+              }
+              valueExpr="id"
+              value={productId}
+              onValueChanged={onProductChange}
+              searchEnabled
+              showDropDownButton
+              placeholder="Search product…"
+              width="100%"
+            />
+          </div>
+          {selectedProduct ? (
+            <span className="stock-grid-toolbar__meta">
+              {selectedProduct.sku} · on hand {selectedProduct.quantityOnHand}
+            </span>
+          ) : null}
+          <Button
+            text="New movement"
+            type="default"
+            stylingMode="contained"
+            icon="add"
+            onClick={() => setPopupOpen(true)}
+            disabled={!productId}
           />
         </div>
-        {selectedProduct ? (
-          <span className="stock-toolbar__meta">
-            {selectedProduct.sku} · on hand {selectedProduct.quantityOnHand}
-          </span>
-        ) : null}
-        <Button
-          text="New movement"
-          type="default"
-          stylingMode="contained"
-          onClick={() => setPopupOpen(true)}
-          disabled={!productId}
-        />
+      )}
+    />
+  );
+
+  return (
+    <div className="content-block content-block--fill">
+      <div className="page-toolbar">
+        <h2>Stock</h2>
       </div>
 
       <div className="page-grid-body">
@@ -165,6 +179,8 @@ export default function StockPage() {
           persistenceKey="itm-grid-stock-movements"
           dataSource={movementsStore}
           height="100%"
+          showAddRowButton={false}
+          toolbarItems={stockToolbarItems}
         >
           <FilterRow visible />
           <Column dataField="createdAt" dataType="datetime" caption="When" />

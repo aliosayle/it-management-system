@@ -40,7 +40,9 @@ export default function CompaniesPage() {
 
   return (
     <div className="content-block content-block--fill">
-      <h2>Companies</h2>
+      <div className="page-toolbar">
+        <h2>Companies</h2>
+      </div>
       <div className="page-grid-body">
       <AppDataGrid
         persistenceKey="itm-grid-companies"
