@@ -16,6 +16,7 @@ import Form, { Item, Label, RequiredRule } from "devextreme-react/form";
 import notify from "devextreme/ui/notify";
 import type { FormTypes } from "devextreme-react/form";
 import { apiFetch } from "../api/client";
+import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 import {
   MOVEMENT_TYPE_OPTIONS,
   type MovementTypeValue,
@@ -68,7 +69,7 @@ export default function StockPage() {
 
   useEffect(() => {
     loadProducts().catch((e: unknown) => {
-      notify(e instanceof Error ? e.message : "Failed to load products", "error", 4000);
+      notify(getErrorMessage(e, "Failed to load products"), "error", 5000);
     });
   }, [loadProducts]);
 
@@ -129,7 +130,7 @@ export default function StockPage() {
       await loadProducts();
       gridRef.current?.instance().refresh();
     } catch (e: unknown) {
-      notify(e instanceof Error ? e.message : "Failed to save", "error", 4000);
+      notify(getErrorMessage(e, "Failed to save movement"), "error", 5000);
     }
   }, [productId, movementForm, loadProducts]);
 
@@ -193,6 +194,9 @@ export default function StockPage() {
           height="100%"
           showAddRowButton={false}
           toolbarItems={stockToolbarItems}
+          onDataErrorOccurred={(e) => {
+            notify(getDataGridErrorMessage(e), "error", 5000);
+          }}
         >
           <FilterRow visible />
           <Column dataField="createdAt" dataType="datetime" caption="When" />

@@ -17,6 +17,7 @@ import {
   type ProductOption,
 } from "../components/personnel-bin-popup";
 import { apiFetch } from "../api/client";
+import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 
 type FormMeta = {
   sites: { id: string; label: string }[];
@@ -57,7 +58,7 @@ export default function PersonnelPage() {
           })),
         );
       } catch (e: unknown) {
-        notify(e instanceof Error ? e.message : "Failed to load options", "error", 4000);
+        notify(getErrorMessage(e, "Failed to load options"), "error", 5000);
       }
     })();
   }, [loadFormMeta]);
@@ -118,7 +119,7 @@ export default function PersonnelPage() {
         onEditingStart={(e) => {
           const id = (e.data as { id?: string })?.id;
           loadFormMeta(id).catch((err: unknown) => {
-            notify(err instanceof Error ? err.message : "Failed to load form options", "error", 4000);
+            notify(getErrorMessage(err, "Failed to load form options"), "error", 5000);
           });
         }}
         onInitNewRow={() => {
@@ -127,7 +128,7 @@ export default function PersonnelPage() {
           });
         }}
         onDataErrorOccurred={(e) => {
-          notify((e.error as Error)?.message || "Request failed", "error", 4000);
+          notify(getDataGridErrorMessage(e), "error", 5000);
         }}
       >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>

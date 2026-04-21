@@ -16,6 +16,7 @@ import NumberBox from "devextreme-react/number-box";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
 import { apiFetch, apiFetchBlob } from "../api/client";
+import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 
 type PersonnelRow = {
   id: string;
@@ -91,7 +92,7 @@ export default function PurchasesPage() {
 
   useEffect(() => {
     loadMeta().catch((e: unknown) => {
-      notify(e instanceof Error ? e.message : "Failed to load options", "error", 4000);
+      notify(getErrorMessage(e, "Failed to load options"), "error", 5000);
     });
   }, [loadMeta]);
 
@@ -160,7 +161,7 @@ export default function PurchasesPage() {
         applyDetailToForm(d);
         setPopupOpen(true);
       } catch (e: unknown) {
-        notify(e instanceof Error ? e.message : "Failed to load purchase", "error", 4000);
+        notify(getErrorMessage(e, "Failed to load purchase"), "error", 5000);
       }
     },
     [applyDetailToForm],
@@ -257,7 +258,7 @@ export default function PurchasesPage() {
       resetForm();
       setGridRefresh((k) => k + 1);
     } catch (e: unknown) {
-      notify(e instanceof Error ? e.message : "Failed to save", "error", 4000);
+      notify(getErrorMessage(e, "Failed to save purchase"), "error", 5000);
     } finally {
       setSubmitting(false);
     }
@@ -285,7 +286,7 @@ export default function PurchasesPage() {
         notify("Purchase deleted", "success", 2000);
         setGridRefresh((k) => k + 1);
       } catch (e: unknown) {
-        notify(e instanceof Error ? e.message : "Delete failed", "error", 4000);
+        notify(getErrorMessage(e, "Delete failed"), "error", 5000);
       }
     },
     [],
@@ -301,7 +302,7 @@ export default function PurchasesPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e: unknown) {
-      notify(e instanceof Error ? e.message : "Download failed", "error", 4000);
+      notify(getErrorMessage(e, "Download failed"), "error", 5000);
     }
   }, []);
 
@@ -333,7 +334,7 @@ export default function PurchasesPage() {
             />
           }
           onDataErrorOccurred={(e) => {
-            notify((e.error as Error)?.message || "Request failed", "error", 4000);
+            notify(getDataGridErrorMessage(e), "error", 5000);
           }}
         >
           <FilterRow visible />

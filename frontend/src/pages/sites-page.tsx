@@ -12,6 +12,7 @@ import {
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
 import { apiFetch } from "../api/client";
+import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 
 type Company = { id: string; name: string };
 
@@ -24,7 +25,7 @@ export default function SitesPage() {
         const list = (await apiFetch("/api/companies")) as Company[];
         setCompanies(list);
       } catch (e: unknown) {
-        notify(e instanceof Error ? e.message : "Failed to load companies", "error", 4000);
+        notify(getErrorMessage(e, "Failed to load companies"), "error", 5000);
       }
     })();
   }, []);
@@ -67,7 +68,7 @@ export default function SitesPage() {
         repaintChangesOnly
         height="100%"
         onDataErrorOccurred={(e) => {
-          notify((e.error as Error)?.message || "Request failed", "error", 4000);
+          notify(getDataGridErrorMessage(e), "error", 5000);
         }}
       >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>

@@ -13,6 +13,7 @@ import PopupDx from "devextreme-react/popup";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "./app-data-grid";
 import { apiFetch } from "../api/client";
+import { getDataGridErrorMessage } from "../utils/error-message";
 
 export type ProductOption = { id: string; sku: string; name: string; label: string };
 
@@ -90,7 +91,7 @@ export function PersonnelBinPopup({
           }
         }}
         onDataErrorOccurred={(e) => {
-          notify((e.error as Error)?.message || "Request failed", "error", 4000);
+          notify(getDataGridErrorMessage(e), "error", 5000);
         }}
       >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>

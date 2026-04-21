@@ -1,4 +1,5 @@
 import type { User } from "../types";
+import { getErrorMessage } from "../utils/error-message";
 import { apiFetch, setToken } from "./client";
 
 type LoginResponse = {
@@ -35,7 +36,7 @@ export async function signIn(email: string, password: string) {
   } catch (e: unknown) {
     return {
       isOk: false as const,
-      message: e instanceof Error ? e.message : "Authentication failed",
+      message: getErrorMessage(e, "Authentication failed"),
     };
   }
 }

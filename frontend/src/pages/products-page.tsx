@@ -18,6 +18,7 @@ import type { FormTypes } from "devextreme-react/form";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
 import { apiFetch } from "../api/client";
+import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 import type { ProductOption } from "../components/personnel-bin-popup";
 
 type PersonnelApi = {
@@ -71,7 +72,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     loadAssignMeta().catch((e: unknown) => {
-      notify(e instanceof Error ? e.message : "Failed to load assign options", "error", 4000);
+      notify(getErrorMessage(e, "Failed to load assign options"), "error", 5000);
     });
   }, [loadAssignMeta]);
 
@@ -126,7 +127,7 @@ export default function ProductsPage() {
       });
       setAssignOpen(true);
     } catch (e: unknown) {
-      notify(e instanceof Error ? e.message : "Failed to open", "error", 4000);
+      notify(getErrorMessage(e, "Failed to open"), "error", 5000);
     }
   }, [loadAssignMeta]);
 
@@ -152,7 +153,7 @@ export default function ProductsPage() {
       notify("Added to personal bin", "success", 2000);
       setAssignOpen(false);
     } catch (e: unknown) {
-      notify(e instanceof Error ? e.message : "Failed to assign", "error", 4000);
+      notify(getErrorMessage(e, "Failed to assign"), "error", 5000);
     }
   }, [assignForm]);
 
@@ -190,11 +191,7 @@ export default function ProductsPage() {
           (e.data as { quantityOnHand?: number }).quantityOnHand = 0;
         }}
         onDataErrorOccurred={(e) => {
-          notify(
-            (e.error as Error)?.message || "Request failed",
-            "error",
-            4000,
-          );
+          notify(getDataGridErrorMessage(e), "error", 5000);
         }}
       >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>

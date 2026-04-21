@@ -14,6 +14,7 @@ import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
 import { useAuth } from "../contexts/auth-hooks";
 import { apiFetch } from "../api/client";
+import { getDataGridErrorMessage } from "../utils/error-message";
 
 const roleValues = [
   { value: "ADMIN", text: "Admin" },
@@ -84,11 +85,7 @@ export default function UsersPage() {
           }
         }}
         onDataErrorOccurred={(e) => {
-          notify(
-            (e.error as Error)?.message || "Request failed",
-            "error",
-            4000,
-          );
+          notify(getDataGridErrorMessage(e), "error", 5000);
         }}
       >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
