@@ -4,7 +4,11 @@ import path from "path";
 import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { MovementType, Prisma, PurchaseDestination } from "@prisma/client";
+import { MovementType, Prisma } from "@prisma/client";
+
+/** Matches Prisma `PurchaseDestination` — use string literals so runtime does not depend on a stale generated enum export (run `npx prisma generate` after schema changes). */
+const PURCHASE_DESTINATIONS = ["STOCK", "PERSONNEL_BIN"] as const;
+type PurchaseDestination = (typeof PURCHASE_DESTINATIONS)[number];
 import { prisma } from "../lib/prisma.js";
 import { applyStockMovementInTransaction } from "../lib/warehouse-inbound.js";
 import { addToPersonnelBinWithoutStock } from "../lib/personnel-bin-direct.js";
@@ -59,7 +63,7 @@ const lineSchema = z.object({
 
 const createBodySchema = z.object({
   authorizedByPersonnelId: z.string().min(1),
-  destination: z.nativeEnum(PurchaseDestination),
+  destination: z.enum(PURCHASE_DESTINATIONS),
   targetPersonnelId: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   lines: z.array(lineSchema).min(1),
@@ -204,12 +208,12 @@ router.post("/", (req, res, next) => {
   }
 
   const data = parsed.data;
-  if (data.destination === PurchaseDestination.PERSONNEL_BIN && !data.targetPersonnelId) {
+  if (data.destination === "PERSONNEL_BIN" && !data.targetPersonnelId) {
     fs.unlink(file.path, () => {});
     res.status(400).json({ error: "targetPersonnelId is required for personal bin destination" });
     return;
   }
-  if (data.destination === PurchaseDestination.STOCK && data.targetPersonnelId) {
+  if (data.destination === "STOCK" && data.targetPersonnelId) {
     fs.unlink(file.path, () => {});
     res.status(400).json({ error: "targetPersonnelId must be empty when destination is stock" });
     return;
@@ -271,7 +275,7 @@ router.post("/", (req, res, next) => {
 
       const refNote = `Purchase ${p.id}`;
 
-      if (data.destination === PurchaseDestination.STOCK) {
+      if (data.destination === "STOCK") {
         for (const line of p.lines) {
           const qty = new Prisma.Decimal(line.quantity.toString());
           await applyStockMovementInTransaction(tx, {
