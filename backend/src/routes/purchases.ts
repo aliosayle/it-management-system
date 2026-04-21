@@ -6,12 +6,19 @@ import multer from "multer";
 import { z } from "zod";
 import { MovementType, Prisma } from "@prisma/client";
 
+function resolveBonAbsolute(storedPath: string): string {
+  return path.isAbsolute(storedPath) ? storedPath : path.join(process.cwd(), storedPath);
+}
+
 /** Matches Prisma `PurchaseDestination` — use string literals so runtime does not depend on a stale generated enum export (run `npx prisma generate` after schema changes). */
 const PURCHASE_DESTINATIONS = ["STOCK", "PERSONNEL_BIN"] as const;
 type PurchaseDestination = (typeof PURCHASE_DESTINATIONS)[number];
 import { prisma } from "../lib/prisma.js";
 import { applyStockMovementInTransaction } from "../lib/warehouse-inbound.js";
-import { addToPersonnelBinWithoutStock } from "../lib/personnel-bin-direct.js";
+import {
+  addToPersonnelBinWithoutStock,
+  subtractFromPersonnelBinWithoutStock,
+} from "../lib/personnel-bin-direct.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -67,6 +74,13 @@ const createBodySchema = z.object({
   targetPersonnelId: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   lines: z.array(lineSchema).min(1),
+});
+
+const patchBodySchema = z.object({
+  authorizedByPersonnelId: z.string().min(1).optional(),
+  notes: z.union([z.string(), z.null()]).optional(),
+  targetPersonnelId: z.union([z.string(), z.null()]).optional(),
+  lines: z.array(lineSchema).min(1).optional(),
 });
 
 function purchaseListItem(p: {
@@ -155,9 +169,7 @@ router.get("/:id/bon", async (req, res) => {
     res.status(404).json({ error: "Not found" });
     return;
   }
-  const abs = path.isAbsolute(row.bonStoredPath)
-    ? row.bonStoredPath
-    : path.join(process.cwd(), row.bonStoredPath);
+  const abs = resolveBonAbsolute(row.bonStoredPath);
   if (!fs.existsSync(abs)) {
     res.status(404).json({ error: "Bon file missing on server" });
     return;
@@ -306,6 +318,396 @@ router.post("/", (req, res, next) => {
     res.status(201).json({ id: purchase.id });
   } catch (e: unknown) {
     fs.unlink(file.path, () => {});
+    throw e;
+  }
+});
+
+type Tx = Prisma.TransactionClient;
+
+async function replacePurchaseLinesStock(
+  tx: Tx,
+  purchaseId: string,
+  userId: string,
+  newLines: { productId: string; quantity: number }[],
+  movementNote: string | null,
+) {
+  const movements = await tx.stockMovement.findMany({ where: { purchaseId } });
+  for (const m of movements) {
+    if (m.type !== MovementType.IN) continue;
+    await applyStockMovementInTransaction(tx, {
+      productId: m.productId,
+      userId,
+      type: MovementType.OUT,
+      quantity: new Prisma.Decimal(m.quantity.toString()),
+      note: `Adjustment: purchase ${purchaseId}`,
+      purchaseId: null,
+    });
+  }
+  await tx.stockMovement.deleteMany({ where: { purchaseId } });
+  await tx.purchaseLine.deleteMany({ where: { purchaseId } });
+  const refNote = `Purchase ${purchaseId}`;
+  for (let i = 0; i < newLines.length; i++) {
+    const l = newLines[i];
+    await tx.purchaseLine.create({
+      data: {
+        purchaseId,
+        productId: l.productId,
+        quantity: new Prisma.Decimal(l.quantity),
+        lineIndex: i,
+      },
+    });
+  }
+  const lines = await tx.purchaseLine.findMany({
+    where: { purchaseId },
+    orderBy: { lineIndex: "asc" },
+  });
+  for (const line of lines) {
+    const qty = new Prisma.Decimal(line.quantity.toString());
+    await applyStockMovementInTransaction(tx, {
+      productId: line.productId,
+      userId,
+      type: MovementType.IN,
+      quantity: qty,
+      note: [refNote, movementNote].filter(Boolean).join(" · ") || refNote,
+      purchaseId,
+    });
+  }
+}
+
+async function replacePurchaseLinesBin(
+  tx: Tx,
+  purchaseId: string,
+  existingLines: { productId: string; quantity: unknown }[],
+  oldBinPersonnelId: string,
+  newBinPersonnelId: string,
+  newLines: { productId: string; quantity: number }[],
+  movementNote: string | null,
+) {
+  for (const line of existingLines) {
+    await subtractFromPersonnelBinWithoutStock(tx, {
+      personnelId: oldBinPersonnelId,
+      productId: line.productId,
+      subQty: new Prisma.Decimal(String(line.quantity)),
+    });
+  }
+  await tx.purchaseLine.deleteMany({ where: { purchaseId } });
+  const refNote = `Purchase ${purchaseId}`;
+  for (let i = 0; i < newLines.length; i++) {
+    const l = newLines[i];
+    await tx.purchaseLine.create({
+      data: {
+        purchaseId,
+        productId: l.productId,
+        quantity: new Prisma.Decimal(l.quantity),
+        lineIndex: i,
+      },
+    });
+  }
+  const lines = await tx.purchaseLine.findMany({
+    where: { purchaseId },
+    orderBy: { lineIndex: "asc" },
+  });
+  for (const line of lines) {
+    await addToPersonnelBinWithoutStock(tx, {
+      personnelId: newBinPersonnelId,
+      productId: line.productId,
+      addQty: new Prisma.Decimal(line.quantity.toString()),
+      noteLine: [refNote, movementNote].filter(Boolean).join(" · ") || refNote,
+    });
+  }
+}
+
+async function transferBinPurchaseTarget(
+  tx: Tx,
+  purchaseId: string,
+  lines: { productId: string; quantity: unknown }[],
+  oldPid: string,
+  newPid: string,
+  movementNote: string | null,
+) {
+  const refNote = `Purchase ${purchaseId}`;
+  for (const line of lines) {
+    const q = new Prisma.Decimal(String(line.quantity));
+    await subtractFromPersonnelBinWithoutStock(tx, {
+      personnelId: oldPid,
+      productId: line.productId,
+      subQty: q,
+    });
+    await addToPersonnelBinWithoutStock(tx, {
+      personnelId: newPid,
+      productId: line.productId,
+      addQty: q,
+      noteLine: [refNote, movementNote].filter(Boolean).join(" · ") || refNote,
+    });
+  }
+}
+
+function parsePatchBody(req: { body: unknown }): Record<string, unknown> {
+  const b = { ...(req.body as Record<string, unknown>) };
+  if (typeof b.lines === "string") {
+    b.lines = JSON.parse(b.lines as string);
+  }
+  if (b.notes === "") {
+    b.notes = null;
+  }
+  return b;
+}
+
+router.delete("/:id", async (req, res) => {
+  const id = req.params.id;
+  const userId = req.user!.sub;
+  const existing = await prisma.purchase.findUnique({
+    where: { id },
+    include: { lines: true },
+  });
+  if (!existing) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (existing.destination === "STOCK") {
+        const movements = await tx.stockMovement.findMany({ where: { purchaseId: id } });
+        for (const m of movements) {
+          if (m.type !== MovementType.IN) continue;
+          await applyStockMovementInTransaction(tx, {
+            productId: m.productId,
+            userId,
+            type: MovementType.OUT,
+            quantity: new Prisma.Decimal(m.quantity.toString()),
+            note: `Reversal: purchase ${id} deleted`,
+            purchaseId: null,
+          });
+        }
+        await tx.stockMovement.deleteMany({ where: { purchaseId: id } });
+      } else {
+        const targetId = existing.targetPersonnelId;
+        if (!targetId) {
+          throw new Error("Purchase missing bin target");
+        }
+        for (const line of existing.lines) {
+          await subtractFromPersonnelBinWithoutStock(tx, {
+            personnelId: targetId,
+            productId: line.productId,
+            subQty: new Prisma.Decimal(line.quantity.toString()),
+          });
+        }
+      }
+      await tx.purchase.delete({ where: { id } });
+    });
+    const abs = resolveBonAbsolute(existing.bonStoredPath);
+    fs.unlink(abs, () => {});
+    res.status(204).send();
+  } catch (e: unknown) {
+    const code =
+      e && typeof e === "object" && "code" in e ? (e as { code?: string }).code : undefined;
+    if (code === "INSUFFICIENT_BIN") {
+      res.status(409).json({
+        error: e instanceof Error ? e.message : "Insufficient quantity in personal bin",
+      });
+      return;
+    }
+    if (code === "INSUFFICIENT") {
+      res.status(409).json({
+        error:
+          e instanceof Error
+            ? e.message
+            : "Cannot delete: insufficient warehouse stock to reverse this purchase",
+      });
+      return;
+    }
+    throw e;
+  }
+});
+
+router.patch("/:id", (req, res, next) => {
+  const ct = req.get("content-type") || "";
+  if (ct.includes("multipart/form-data")) {
+    upload.single("bon")(req, res, (err: unknown) => {
+      if (err) {
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        res.status(400).json({ error: msg });
+        return;
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+}, async (req, res) => {
+  const id = req.params.id;
+  const userId = req.user!.sub;
+
+  let raw: Record<string, unknown>;
+  try {
+    raw = parsePatchBody(req);
+  } catch {
+    res.status(400).json({ error: "Invalid lines JSON" });
+    return;
+  }
+
+  const parsed = patchBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const p = parsed.data;
+  const hasFile = Boolean(req.file);
+  if (!hasFile && Object.keys(p).length === 0) {
+    res.status(400).json({ error: "No changes" });
+    return;
+  }
+
+  const existing = await prisma.purchase.findUnique({
+    where: { id },
+    include: { lines: { orderBy: { lineIndex: "asc" } } },
+  });
+  if (!existing) {
+    if (hasFile && req.file) fs.unlink(req.file.path, () => {});
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  if (p.authorizedByPersonnelId) {
+    const a = await prisma.personnel.findUnique({ where: { id: p.authorizedByPersonnelId } });
+    if (!a) {
+      if (hasFile && req.file) fs.unlink(req.file.path, () => {});
+      res.status(400).json({ error: "Authorizing personnel not found" });
+      return;
+    }
+  }
+
+  const dest = existing.destination as PurchaseDestination;
+  if (dest === "PERSONNEL_BIN" && p.targetPersonnelId === null) {
+    if (hasFile && req.file) fs.unlink(req.file.path, () => {});
+    res.status(400).json({ error: "targetPersonnelId cannot be cleared for bin purchases" });
+    return;
+  }
+  if (dest === "PERSONNEL_BIN" && p.targetPersonnelId) {
+    const t = await prisma.personnel.findUnique({ where: { id: p.targetPersonnelId } });
+    if (!t) {
+      if (hasFile && req.file) fs.unlink(req.file.path, () => {});
+      res.status(400).json({ error: "Target personnel not found" });
+      return;
+    }
+  }
+
+  if (p.lines) {
+    const productIds = [...new Set(p.lines.map((l) => l.productId))];
+    const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
+    if (products.length !== productIds.length) {
+      if (hasFile && req.file) fs.unlink(req.file.path, () => {});
+      res.status(400).json({ error: "One or more products not found" });
+      return;
+    }
+  }
+
+  const nextNotes =
+    p.notes !== undefined ? (p.notes === null ? null : p.notes.trim() || null) : undefined;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const movementNote =
+        nextNotes !== undefined ? nextNotes : existing.notes;
+
+      if (p.lines !== undefined) {
+        if (dest === "STOCK") {
+          await replacePurchaseLinesStock(tx, id, userId, p.lines, movementNote ?? null);
+        } else {
+          const oldT = existing.targetPersonnelId;
+          if (!oldT) {
+            throw new Error("Purchase missing bin target");
+          }
+          const newT =
+            p.targetPersonnelId !== undefined && p.targetPersonnelId !== null
+              ? p.targetPersonnelId
+              : oldT;
+          await replacePurchaseLinesBin(
+            tx,
+            id,
+            existing.lines,
+            oldT,
+            newT,
+            p.lines,
+            movementNote ?? null,
+          );
+          await tx.purchase.update({
+            where: { id },
+            data: { targetPersonnelId: newT },
+          });
+        }
+      } else if (
+        dest === "PERSONNEL_BIN" &&
+        p.targetPersonnelId !== undefined &&
+        p.targetPersonnelId !== existing.targetPersonnelId
+      ) {
+        const oldT = existing.targetPersonnelId;
+        const newT = p.targetPersonnelId;
+        if (oldT && newT && oldT !== newT) {
+          await transferBinPurchaseTarget(
+            tx,
+            id,
+            existing.lines,
+            oldT,
+            newT,
+            nextNotes !== undefined ? nextNotes : existing.notes,
+          );
+        }
+      }
+
+      const updateData: {
+        authorizedByPersonnelId?: string;
+        notes?: string | null;
+        targetPersonnelId?: string | null;
+        bonStoredPath?: string;
+        bonOriginalName?: string;
+      } = {};
+
+      if (p.authorizedByPersonnelId !== undefined) {
+        updateData.authorizedByPersonnelId = p.authorizedByPersonnelId;
+      }
+      if (p.notes !== undefined) {
+        updateData.notes = nextNotes ?? null;
+      }
+      if (
+        dest === "PERSONNEL_BIN" &&
+        p.targetPersonnelId !== undefined &&
+        p.lines === undefined
+      ) {
+        updateData.targetPersonnelId = p.targetPersonnelId;
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await tx.purchase.update({ where: { id }, data: updateData });
+      }
+
+      if (req.file) {
+        const relPath = path.relative(process.cwd(), req.file.path);
+        const storedPath = relPath && !relPath.startsWith("..") ? relPath : req.file.path;
+        const prevAbs = resolveBonAbsolute(existing.bonStoredPath);
+        await tx.purchase.update({
+          where: { id },
+          data: {
+            bonStoredPath: storedPath,
+            bonOriginalName: req.file.originalname.slice(0, 500),
+          },
+        });
+        fs.unlink(prevAbs, () => {});
+      }
+    });
+
+    res.json({ ok: true });
+  } catch (e: unknown) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    const code =
+      e && typeof e === "object" && "code" in e ? (e as { code?: string }).code : undefined;
+    if (code === "INSUFFICIENT_BIN") {
+      res.status(409).json({
+        error: e instanceof Error ? e.message : "Insufficient quantity in personal bin",
+      });
+      return;
+    }
     throw e;
   }
 });

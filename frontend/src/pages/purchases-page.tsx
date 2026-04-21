@@ -36,6 +36,25 @@ type PurchaseListRow = {
   lineCount: number;
 };
 
+type PurchaseDetailLine = {
+  id: string;
+  productId: string;
+  sku: string;
+  productName: string;
+  quantity: number;
+  lineIndex: number;
+};
+
+type PurchaseDetail = {
+  id: string;
+  destination: "STOCK" | "PERSONNEL_BIN";
+  bonOriginalName: string;
+  notes: string | null;
+  authorizedBy: { id: string; firstName: string; lastName: string };
+  targetPersonnel: { id: string; firstName: string; lastName: string } | null;
+  lines: PurchaseDetailLine[];
+};
+
 type LineDraft = { productId: string | null; quantity: number };
 
 const DEST_OPTIONS = [
@@ -45,6 +64,7 @@ const DEST_OPTIONS = [
 
 export default function PurchasesPage() {
   const [popupOpen, setPopupOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [personnel, setPersonnel] = useState<PersonnelRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [authorizerId, setAuthorizerId] = useState<string | null>(null);
@@ -53,8 +73,11 @@ export default function PurchasesPage() {
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([{ productId: null, quantity: 1 }]);
   const [bonFile, setBonFile] = useState<File | null>(null);
+  const [existingBonName, setExistingBonName] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [gridRefresh, setGridRefresh] = useState(0);
+
+  const isEdit = editingId !== null;
 
   const loadMeta = useCallback(async () => {
     const [pl, pr] = await Promise.all([
@@ -106,12 +129,49 @@ export default function PurchasesPage() {
     setNotes("");
     setLines([{ productId: products[0]?.id ?? null, quantity: 1 }]);
     setBonFile(null);
+    setExistingBonName(null);
+    setEditingId(null);
   }, [personnel, products]);
 
-  const openPopup = useCallback(() => {
+  const openCreate = useCallback(() => {
     resetForm();
     setPopupOpen(true);
   }, [resetForm]);
+
+  const applyDetailToForm = useCallback((d: PurchaseDetail) => {
+    setEditingId(d.id);
+    setAuthorizerId(d.authorizedBy.id);
+    setDestination(d.destination);
+    setTargetPersonnelId(d.targetPersonnel?.id ?? null);
+    setNotes(d.notes ?? "");
+    setLines(
+      d.lines.length > 0
+        ? d.lines.map((l) => ({ productId: l.productId, quantity: l.quantity }))
+        : [{ productId: products[0]?.id ?? null, quantity: 1 }],
+    );
+    setBonFile(null);
+    setExistingBonName(d.bonOriginalName);
+  }, [products]);
+
+  const openEdit = useCallback(
+    async (row: PurchaseListRow) => {
+      try {
+        const d = (await apiFetch(`/api/purchases/${row.id}`)) as PurchaseDetail;
+        applyDetailToForm(d);
+        setPopupOpen(true);
+      } catch (e: unknown) {
+        notify(e instanceof Error ? e.message : "Failed to load purchase", "error", 4000);
+      }
+    },
+    [applyDetailToForm],
+  );
+
+  const closePopup = useCallback(() => {
+    setPopupOpen(false);
+    setEditingId(null);
+    setExistingBonName(null);
+    setBonFile(null);
+  }, []);
 
   const addLine = useCallback(() => {
     setLines((prev) => [...prev, { productId: products[0]?.id ?? null, quantity: 1 }]);
@@ -134,7 +194,7 @@ export default function PurchasesPage() {
       notify("Select target personnel for personal bin", "warning", 2500);
       return;
     }
-    if (!bonFile) {
+    if (!isEdit && !bonFile) {
       notify("Upload a bon (receipt)", "warning", 2500);
       return;
     }
@@ -146,23 +206,51 @@ export default function PurchasesPage() {
       return;
     }
 
-    const fd = new FormData();
-    fd.append("authorizedByPersonnelId", authorizerId);
-    fd.append("destination", destination);
-    if (destination === "PERSONNEL_BIN" && targetPersonnelId) {
-      fd.append("targetPersonnelId", targetPersonnelId);
-    }
-    if (notes.trim()) {
-      fd.append("notes", notes.trim());
-    }
-    fd.append("lines", JSON.stringify(payloadLines));
-    fd.append("bon", bonFile);
-
     setSubmitting(true);
     try {
-      await apiFetch("/api/purchases", { method: "POST", body: fd });
-      notify("Purchase recorded", "success", 2000);
-      setPopupOpen(false);
+      if (isEdit && editingId) {
+        if (bonFile) {
+          const fd = new FormData();
+          fd.append("authorizedByPersonnelId", authorizerId);
+          fd.append("lines", JSON.stringify(payloadLines));
+          fd.append("notes", notes.trim());
+          if (destination === "PERSONNEL_BIN" && targetPersonnelId) {
+            fd.append("targetPersonnelId", targetPersonnelId);
+          }
+          fd.append("bon", bonFile);
+          await apiFetch(`/api/purchases/${editingId}`, { method: "PATCH", body: fd });
+        } else {
+          const body: Record<string, unknown> = {
+            authorizedByPersonnelId: authorizerId,
+            notes: notes.trim() || null,
+            lines: payloadLines,
+          };
+          if (destination === "PERSONNEL_BIN") {
+            body.targetPersonnelId = targetPersonnelId;
+          }
+          await apiFetch(`/api/purchases/${editingId}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+        }
+        notify("Purchase updated", "success", 2000);
+      } else {
+        const fd = new FormData();
+        fd.append("authorizedByPersonnelId", authorizerId);
+        fd.append("destination", destination);
+        if (destination === "PERSONNEL_BIN" && targetPersonnelId) {
+          fd.append("targetPersonnelId", targetPersonnelId);
+        }
+        if (notes.trim()) {
+          fd.append("notes", notes.trim());
+        }
+        fd.append("lines", JSON.stringify(payloadLines));
+        fd.append("bon", bonFile!);
+        await apiFetch("/api/purchases", { method: "POST", body: fd });
+        notify("Purchase recorded", "success", 2000);
+      }
+      closePopup();
+      resetForm();
       setGridRefresh((k) => k + 1);
     } catch (e: unknown) {
       notify(e instanceof Error ? e.message : "Failed to save", "error", 4000);
@@ -176,7 +264,28 @@ export default function PurchasesPage() {
     notes,
     lines,
     bonFile,
+    isEdit,
+    editingId,
+    closePopup,
+    resetForm,
   ]);
+
+  const deletePurchase = useCallback(
+    async (row: PurchaseListRow) => {
+      const ok = window.confirm(
+        "Delete this purchase? Warehouse stock or personal bin quantities will be reversed.",
+      );
+      if (!ok) return;
+      try {
+        await apiFetch(`/api/purchases/${row.id}`, { method: "DELETE" });
+        notify("Purchase deleted", "success", 2000);
+        setGridRefresh((k) => k + 1);
+      } catch (e: unknown) {
+        notify(e instanceof Error ? e.message : "Delete failed", "error", 4000);
+      }
+    },
+    [],
+  );
 
   const downloadBon = useCallback(async (row: PurchaseListRow) => {
     try {
@@ -201,7 +310,7 @@ export default function PurchasesPage() {
           type="default"
           stylingMode="contained"
           icon="add"
-          onClick={openPopup}
+          onClick={openCreate}
         />
       </div>
 
@@ -217,21 +326,30 @@ export default function PurchasesPage() {
           }}
         >
           <FilterRow visible />
-          <Column dataField="createdAt" dataType="datetime" caption="When" />
+          <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
           <Column
             dataField="destination"
-            caption="Destination"
-            width={200}
+            caption="Dest"
+            width={88}
             calculateCellValue={(row: PurchaseListRow) =>
-              row.destination === "STOCK" ? "Stock" : "Personal bin"
+              row.destination === "STOCK" ? "Stock" : "Bin"
             }
           />
           <Column dataField="authorizedByName" caption="Authorized by" />
           <Column dataField="targetPersonnelName" caption="Bin recipient" />
-          <Column dataField="lineCount" caption="Lines" width={80} dataType="number" />
-          <Column dataField="createdByName" caption="Recorded by" />
-          <Column dataField="bonOriginalName" caption="Bon" width={180} />
-          <Column type="buttons" width={100}>
+          <Column dataField="lineCount" caption="#" width={44} dataType="number" />
+          <Column dataField="createdByName" caption="Recorded by" width={120} />
+          <Column dataField="bonOriginalName" caption="Bon" width={140} />
+          <Column type="buttons" width={132}>
+            <ColumnButton
+              hint="Edit"
+              icon="edit"
+              text="Edit"
+              onClick={(e) => {
+                const row = e.row?.data as PurchaseListRow | undefined;
+                if (row) void openEdit(row);
+              }}
+            />
             <ColumnButton
               hint="Download bon"
               icon="download"
@@ -243,17 +361,26 @@ export default function PurchasesPage() {
                 }
               }}
             />
+            <ColumnButton
+              hint="Delete"
+              icon="trash"
+              text="Del"
+              onClick={(e) => {
+                const row = e.row?.data as PurchaseListRow | undefined;
+                if (row) void deletePurchase(row);
+              }}
+            />
           </Column>
-          <Paging defaultPageSize={20} />
+          <Paging defaultPageSize={25} />
           <Pager showPageSizeSelector showInfo />
         </AppDataGrid>
       </div>
 
       <Popup
         visible={popupOpen}
-        onHiding={() => setPopupOpen(false)}
+        onHiding={closePopup}
         showTitle
-        title="Record purchase"
+        title={isEdit ? "Edit purchase" : "Record purchase"}
         width={560}
         height="auto"
         showCloseButton
@@ -283,6 +410,7 @@ export default function PurchasesPage() {
                 setDestination((e.value as "STOCK" | "PERSONNEL_BIN") ?? "STOCK")
               }
               searchEnabled
+              disabled={isEdit}
             />
           </div>
           {destination === "PERSONNEL_BIN" ? (
@@ -301,7 +429,12 @@ export default function PurchasesPage() {
             </div>
           ) : null}
           <div className="dx-field">
-            <span className="dx-field-label">Bon (PDF or image)</span>
+            <span className="dx-field-label">
+              Bon (PDF or image){isEdit ? " — optional to replace" : ""}
+            </span>
+            {isEdit && existingBonName ? (
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Current: {existingBonName}</div>
+            ) : null}
             <input
               type="file"
               accept=".pdf,image/*"
@@ -310,9 +443,9 @@ export default function PurchasesPage() {
           </div>
           <div className="dx-field">
             <span className="dx-field-label">Notes</span>
-            <TextArea value={notes} onValueChanged={(e) => setNotes(e.value ?? "")} height={60} />
+            <TextArea value={notes} onValueChanged={(e) => setNotes(e.value ?? "")} height={56} />
           </div>
-          <div style={{ marginBottom: 8, fontWeight: 600 }}>Lines</div>
+          <div style={{ marginBottom: 6, fontWeight: 600 }}>Lines</div>
           {lines.map((line, index) => (
             <div
               key={index}
@@ -320,7 +453,7 @@ export default function PurchasesPage() {
                 display: "flex",
                 gap: 8,
                 alignItems: "center",
-                marginBottom: 8,
+                marginBottom: 6,
                 flexWrap: "wrap",
               }}
             >
@@ -355,10 +488,10 @@ export default function PurchasesPage() {
           ))}
           <Button text="Add line" icon="add" stylingMode="outlined" onClick={addLine} />
         </div>
-        <div style={{ padding: "12px 0 0", textAlign: "right" }}>
-          <Button text="Cancel" stylingMode="outlined" onClick={() => setPopupOpen(false)} />
+        <div style={{ padding: "10px 0 0", textAlign: "right" }}>
+          <Button text="Cancel" stylingMode="outlined" onClick={closePopup} />
           <Button
-            text="Save"
+            text={isEdit ? "Save changes" : "Save"}
             type="default"
             stylingMode="contained"
             disabled={submitting}

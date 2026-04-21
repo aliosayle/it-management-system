@@ -1,0 +1,17 @@
+/* Denser rows on all AppDataGrid instances (class dx-datagrid-app on root). */
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-row > td,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-headers .dx-header-row > td {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-data-row {
+  min-height: 26px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-filter-row td {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}

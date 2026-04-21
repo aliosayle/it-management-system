@@ -46,3 +46,46 @@ export async function addToPersonnelBinWithoutStock(
     });
   }
 }
+
+/** Decrease bin quantity without touching warehouse stock (e.g. reversing a direct-to-bin purchase). */
+export async function subtractFromPersonnelBinWithoutStock(
+  tx: Tx,
+  params: {
+    personnelId: string;
+    productId: string;
+    subQty: Prisma.Decimal;
+  },
+): Promise<void> {
+  const { personnelId, productId, subQty } = params;
+  if (subQty.lessThanOrEqualTo(0)) {
+    return;
+  }
+
+  const existing = await tx.personnelBinItem.findUnique({
+    where: {
+      personnelId_productId: { personnelId, productId },
+    },
+  });
+  if (!existing) {
+    throw Object.assign(new Error("Insufficient quantity in personal bin"), {
+      code: "INSUFFICIENT_BIN",
+    });
+  }
+
+  const cur = new Prisma.Decimal(existing.quantity.toString());
+  if (cur.comparedTo(subQty) < 0) {
+    throw Object.assign(new Error("Insufficient quantity in personal bin"), {
+      code: "INSUFFICIENT_BIN",
+    });
+  }
+
+  const next = cur.minus(subQty);
+  if (next.lessThanOrEqualTo(0)) {
+    await tx.personnelBinItem.delete({ where: { id: existing.id } });
+  } else {
+    await tx.personnelBinItem.update({
+      where: { id: existing.id },
+      data: { quantity: next },
+    });
+  }
+}
