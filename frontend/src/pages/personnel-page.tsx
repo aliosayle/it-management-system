@@ -107,6 +107,48 @@ export default function PersonnelPage() {
     setViewOpen(true);
   }, []);
 
+  /** Use contentRender so markup mounts in the popup template DOM, not the portal+display:contents path that leaks into the page flex layout under the grid. */
+  const renderViewPopupContent = useCallback(() => {
+    if (!viewRow) {
+      return <div />;
+    }
+    const row = viewRow;
+    return (
+      <div
+        className="personnel-view-readonly"
+        style={{ fontSize: 14, lineHeight: 1.55, color: "var(--base-text-color, #111)" }}
+      >
+        <div>
+          <strong>Name</strong>{" "}
+          {(row.fullName as string) ||
+            `${String(row.firstName ?? "")} ${String(row.lastName ?? "")}`.trim() ||
+            "—"}
+        </div>
+        <div>
+          <strong>Email</strong> {String(row.email ?? "—")}
+        </div>
+        <div>
+          <strong>Phone</strong> {String(row.phone ?? "—")}
+        </div>
+        <div>
+          <strong>Site</strong> {String(row.siteLabel ?? "—")}
+        </div>
+        <div>
+          <strong>Linked app user</strong> {String(row.userEmail ?? "—")}
+        </div>
+        <div>
+          <strong>Can authorize purchases</strong> {row.canAuthorizePurchases ? "Yes" : "No"}
+        </div>
+        <div>
+          <strong>Created</strong> {formatWhen(row.createdAt)}
+        </div>
+        <div>
+          <strong>Updated</strong> {formatWhen(row.updatedAt)}
+        </div>
+      </div>
+    );
+  }, [viewRow]);
+
   return (
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
@@ -245,46 +287,11 @@ export default function PersonnelPage() {
         }}
         showTitle
         title="Personnel"
-        width={440}
+        width={640}
         height="auto"
         showCloseButton
-      >
-        {viewRow ? (
-          <div
-            className="personnel-view-readonly"
-            style={{ fontSize: 14, lineHeight: 1.55, color: "var(--base-text-color, #111)" }}
-          >
-            <div>
-              <strong>Name</strong>{" "}
-              {(viewRow.fullName as string) ||
-                `${String(viewRow.firstName ?? "")} ${String(viewRow.lastName ?? "")}`.trim() ||
-                "—"}
-            </div>
-            <div>
-              <strong>Email</strong> {String(viewRow.email ?? "—")}
-            </div>
-            <div>
-              <strong>Phone</strong> {String(viewRow.phone ?? "—")}
-            </div>
-            <div>
-              <strong>Site</strong> {String(viewRow.siteLabel ?? "—")}
-            </div>
-            <div>
-              <strong>Linked app user</strong> {String(viewRow.userEmail ?? "—")}
-            </div>
-            <div>
-              <strong>Can authorize purchases</strong>{" "}
-              {viewRow.canAuthorizePurchases ? "Yes" : "No"}
-            </div>
-            <div>
-              <strong>Created</strong> {formatWhen(viewRow.createdAt)}
-            </div>
-            <div>
-              <strong>Updated</strong> {formatWhen(viewRow.updatedAt)}
-            </div>
-          </div>
-        ) : null}
-      </PopupDx>
+        contentRender={renderViewPopupContent}
+      />
     </div>
   );
 }
