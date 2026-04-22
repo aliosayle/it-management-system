@@ -122,9 +122,10 @@ export default function PersonnelPage() {
             notify(getErrorMessage(err, "Failed to load form options"), "error", 5000);
           });
         }}
-        onInitNewRow={() => {
+        onInitNewRow={(e) => {
+          (e.data as { canAuthorizePurchases?: boolean }).canAuthorizePurchases = false;
           loadFormMeta().catch((err: unknown) => {
-            notify(err instanceof Error ? err.message : "Failed to load form options", "error", 4000);
+            notify(getErrorMessage(err, "Failed to load form options"), "error", 5000);
           });
         }}
         onDataErrorOccurred={(e) => {
@@ -132,7 +133,7 @@ export default function PersonnelPage() {
         }}
       >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
-          <Popup title="Personnel" showTitle width={520} height="auto" />
+          <Popup title="Personnel" showTitle width={560} height="auto" />
         </Editing>
         <FilterRow visible />
         <Column
@@ -164,6 +165,12 @@ export default function PersonnelPage() {
         >
           <RequiredRule />
         </Column>
+        <Column
+          dataField="canAuthorizePurchases"
+          caption="Authorize purchases"
+          dataType="boolean"
+          width={130}
+        />
         <Column
           dataField="createdAt"
           dataType="datetime"

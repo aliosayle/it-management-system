@@ -24,6 +24,7 @@ const createSchema = z.object({
   email: z.string().email().optional().nullable(),
   phone: z.string().optional().nullable(),
   userId: z.string().optional().nullable(),
+  canAuthorizePurchases: z.boolean().optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -47,6 +48,7 @@ function serializePersonnel(p: {
   email: string | null;
   phone: string | null;
   userId: string | null;
+  canAuthorizePurchases: boolean;
   createdAt: Date;
   updatedAt: Date;
   site: { name: string; company: { name: string } };
@@ -63,6 +65,7 @@ function serializePersonnel(p: {
     userId: p.userId,
     userEmail: p.user?.email ?? null,
     siteLabel: `${p.site.company.name} / ${p.site.name}`,
+    canAuthorizePurchases: p.canAuthorizePurchases,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };
@@ -138,6 +141,7 @@ router.post("/", async (req, res) => {
     userId: parsed.data.userId || null,
     email: parsed.data.email ?? null,
     phone: parsed.data.phone ?? null,
+    canAuthorizePurchases: parsed.data.canAuthorizePurchases ?? false,
   };
   try {
     const row = await prisma.personnel.create({
@@ -416,6 +420,9 @@ router.patch("/:id", async (req, res) => {
   if (raw.phone !== undefined) data.phone = raw.phone;
   if (raw.userId !== undefined) {
     data.userId = raw.userId || null;
+  }
+  if (raw.canAuthorizePurchases !== undefined) {
+    data.canAuthorizePurchases = raw.canAuthorizePurchases;
   }
   try {
     const row = await prisma.personnel.update({

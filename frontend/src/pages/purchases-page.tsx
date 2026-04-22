@@ -22,6 +22,7 @@ type PersonnelRow = {
   id: string;
   fullName: string;
   siteLabel: string;
+  canAuthorizePurchases: boolean;
 };
 
 type ProductRow = { id: string; sku: string; name: string };
@@ -96,7 +97,31 @@ export default function PurchasesPage() {
     });
   }, [loadMeta]);
 
-  const personnelOptions = useMemo(
+  /** Purchase bon authorizer — only personnel flagged to authorize purchases. */
+  const authorizerOptions = useMemo(() => {
+    const allowed = personnel
+      .filter((p) => p.canAuthorizePurchases)
+      .map((p) => ({
+        id: p.id,
+        label: `${p.fullName} — ${p.siteLabel}`,
+      }));
+    if (!authorizerId) {
+      return allowed;
+    }
+    if (allowed.some((o) => o.id === authorizerId)) {
+      return allowed;
+    }
+    const current = personnel.find((p) => p.id === authorizerId);
+    if (!current) {
+      return allowed;
+    }
+    return [
+      { id: current.id, label: `${current.fullName} — ${current.siteLabel}` },
+      ...allowed.filter((o) => o.id !== authorizerId),
+    ];
+  }, [personnel, authorizerId]);
+
+  const targetPersonnelOptions = useMemo(
     () =>
       personnel.map((p) => ({
         id: p.id,
@@ -401,7 +426,7 @@ export default function PurchasesPage() {
           <div className="dx-field">
             <span className="dx-field-label">Authorized by (personnel)</span>
             <SelectBox
-              dataSource={personnelOptions}
+              dataSource={authorizerOptions}
               displayExpr="label"
               valueExpr="id"
               value={authorizerId}
@@ -409,7 +434,7 @@ export default function PurchasesPage() {
               searchEnabled
               showDropDownButton
               showClearButton
-              placeholder="Search personnel…"
+              placeholder="Search authorized personnel…"
             />
           </div>
           <div className="dx-field">
@@ -432,7 +457,7 @@ export default function PurchasesPage() {
             <div className="dx-field">
               <span className="dx-field-label">Personal bin for</span>
               <SelectBox
-                dataSource={personnelOptions}
+                dataSource={targetPersonnelOptions}
                 displayExpr="label"
                 valueExpr="id"
                 value={targetPersonnelId}

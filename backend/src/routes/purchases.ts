@@ -233,10 +233,18 @@ router.post("/", (req, res, next) => {
 
   const authorizer = await prisma.personnel.findUnique({
     where: { id: data.authorizedByPersonnelId },
+    select: { id: true, canAuthorizePurchases: true },
   });
   if (!authorizer) {
     fs.unlink(file.path, () => {});
     res.status(400).json({ error: "Authorizing personnel not found" });
+    return;
+  }
+  if (!authorizer.canAuthorizePurchases) {
+    fs.unlink(file.path, () => {});
+    res.status(400).json({
+      error: "Selected personnel is not allowed to authorize purchases",
+    });
     return;
   }
 
@@ -570,10 +578,21 @@ router.patch("/:id", (req, res, next) => {
   }
 
   if (p.authorizedByPersonnelId) {
-    const a = await prisma.personnel.findUnique({ where: { id: p.authorizedByPersonnelId } });
+    const a = await prisma.personnel.findUnique({
+      where: { id: p.authorizedByPersonnelId },
+      select: { id: true, canAuthorizePurchases: true },
+    });
     if (!a) {
       if (hasFile && req.file) fs.unlink(req.file.path, () => {});
       res.status(400).json({ error: "Authorizing personnel not found" });
+      return;
+    }
+    const changingAuthorizer = p.authorizedByPersonnelId !== existing.authorizedByPersonnelId;
+    if (changingAuthorizer && !a.canAuthorizePurchases) {
+      if (hasFile && req.file) fs.unlink(req.file.path, () => {});
+      res.status(400).json({
+        error: "Selected personnel is not allowed to authorize purchases",
+      });
       return;
     }
   }
