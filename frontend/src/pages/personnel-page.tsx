@@ -165,12 +165,6 @@ export default function PersonnelPage() {
           <RequiredRule />
         </Column>
         <Column
-          dataField="siteLabel"
-          caption="Site"
-          allowEditing={false}
-          formItem={{ visible: false }}
-        />
-        <Column
           dataField="createdAt"
           dataType="datetime"
           allowEditing={false}
