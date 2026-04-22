@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import CustomStore from "devextreme/data/custom_store";
 import {
   Column,
@@ -10,18 +10,10 @@ import {
   RequiredRule,
   EmailRule,
   ColumnButton,
-  type DataGridRef,
 } from "devextreme-react/data-grid";
-import Button from "devextreme-react/button";
 import PopupDx from "devextreme-react/popup";
-import Form, { Item, Label } from "devextreme-react/form";
-import type { FormTypes } from "devextreme-react/form";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
-import {
-  PersonnelBinPopup,
-  type ProductOption,
-} from "../components/personnel-bin-popup";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 
@@ -30,21 +22,11 @@ type FormMeta = {
   users: { id: string; email: string; displayName: string }[];
 };
 
-type PersonnelDetailForm = {
-  userId: string | null;
-  canAuthorizePurchases: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-/** Strip read-only / grid-only fields and extras managed in the Details popup. */
-function toPersonnelGridSavePayload(row: Record<string, unknown>): Record<string, unknown> {
+function toPersonnelSavePayload(row: Record<string, unknown>): Record<string, unknown> {
   const p = { ...row };
   delete p.fullName;
   delete p.siteLabel;
   delete p.userEmail;
-  delete p.userId;
-  delete p.canAuthorizePurchases;
   delete p.createdAt;
   delete p.updatedAt;
   if (typeof p.email === "string" && p.email.trim() === "") {
@@ -53,35 +35,24 @@ function toPersonnelGridSavePayload(row: Record<string, unknown>): Record<string
   if (typeof p.phone === "string" && p.phone.trim() === "") {
     p.phone = null;
   }
+  if (p.userId === "" || p.userId === undefined) {
+    p.userId = null;
+  }
   return p;
 }
 
-function formatDetailDate(value: string | null | undefined): string {
+function formatWhen(value: unknown): string {
   if (value == null || value === "") {
     return "—";
   }
-  const d = new Date(value);
+  const d = new Date(String(value));
   return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
 }
 
 export default function PersonnelPage() {
-  const gridRef = useRef<DataGridRef>(null);
   const [meta, setMeta] = useState<FormMeta | null>(null);
-  const [products, setProducts] = useState<ProductOption[]>([]);
-  const [binOpen, setBinOpen] = useState(false);
-  const [binPersonnelId, setBinPersonnelId] = useState<string | null>(null);
-  const [binTitle, setBinTitle] = useState("");
-
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailPersonnelId, setDetailPersonnelId] = useState<string | null>(null);
-  const [detailTitle, setDetailTitle] = useState("");
-  const [detailForm, setDetailForm] = useState<PersonnelDetailForm>({
-    userId: null,
-    canAuthorizePurchases: false,
-    createdAt: "",
-    updatedAt: "",
-  });
-  const [detailSaving, setDetailSaving] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewRow, setViewRow] = useState<Record<string, unknown> | null>(null);
 
   const loadFormMeta = useCallback(async (personnelId?: string) => {
     const qs =
@@ -93,26 +64,9 @@ export default function PersonnelPage() {
   }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        await loadFormMeta();
-        const plist = (await apiFetch("/api/products")) as {
-          id: string;
-          sku: string;
-          name: string;
-        }[];
-        setProducts(
-          plist.map((p) => ({
-            id: p.id,
-            sku: p.sku,
-            name: p.name,
-            label: `${p.sku} — ${p.name}`,
-          })),
-        );
-      } catch (e: unknown) {
-        notify(getErrorMessage(e, "Failed to load options"), "error", 5000);
-      }
-    })();
+    loadFormMeta().catch((e: unknown) => {
+      notify(getErrorMessage(e, "Failed to load options"), "error", 5000);
+    });
   }, [loadFormMeta]);
 
   const userLookupRows = useMemo(
@@ -132,10 +86,10 @@ export default function PersonnelPage() {
         insert: (values) =>
           apiFetch("/api/personnel", {
             method: "POST",
-            body: JSON.stringify(toPersonnelGridSavePayload(values as Record<string, unknown>)),
+            body: JSON.stringify(toPersonnelSavePayload(values as Record<string, unknown>)),
           }) as Promise<Record<string, unknown>>,
         update: (key, values) => {
-          const payload = toPersonnelGridSavePayload(values as Record<string, unknown>);
+          const payload = toPersonnelSavePayload(values as Record<string, unknown>);
           delete payload.id;
           return apiFetch(`/api/personnel/${key}`, {
             method: "PATCH",
@@ -148,67 +102,10 @@ export default function PersonnelPage() {
     [],
   );
 
-  const openBin = useCallback((row: Record<string, unknown>) => {
-    const id = row.id as string;
-    const name = (row.fullName as string) || `${row.firstName ?? ""} ${row.lastName ?? ""}`.trim();
-    setBinPersonnelId(id);
-    setBinTitle(name || id);
-    setBinOpen(true);
+  const openView = useCallback((row: Record<string, unknown>) => {
+    setViewRow(row);
+    setViewOpen(true);
   }, []);
-
-  const openPersonnelDetails = useCallback(
-    async (id: string, titleHint: string) => {
-      try {
-        const row = (await apiFetch(`/api/personnel/${id}`)) as {
-          userId: string | null;
-          canAuthorizePurchases: boolean;
-          createdAt: string;
-          updatedAt: string;
-        };
-        setDetailPersonnelId(id);
-        setDetailTitle(titleHint);
-        setDetailForm({
-          userId: row.userId ?? null,
-          canAuthorizePurchases: Boolean(row.canAuthorizePurchases),
-          createdAt: row.createdAt ?? "",
-          updatedAt: row.updatedAt ?? "",
-        });
-        await loadFormMeta(id);
-        setDetailOpen(true);
-      } catch (e: unknown) {
-        notify(getErrorMessage(e, "Failed to load personnel details"), "error", 5000);
-      }
-    },
-    [loadFormMeta],
-  );
-
-  const onDetailFieldChanged = useCallback((e: FormTypes.FieldDataChangedEvent) => {
-    const { dataField, value } = e;
-    if (!dataField) return;
-    setDetailForm((prev) => ({ ...prev, [dataField]: value }));
-  }, []);
-
-  const savePersonnelDetails = useCallback(async () => {
-    if (!detailPersonnelId) return;
-    setDetailSaving(true);
-    try {
-      await apiFetch(`/api/personnel/${detailPersonnelId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          userId: detailForm.userId,
-          canAuthorizePurchases: detailForm.canAuthorizePurchases,
-        }),
-      });
-      notify("Details saved", "success", 2000);
-      setDetailOpen(false);
-      setDetailPersonnelId(null);
-      gridRef.current?.instance().refresh();
-    } catch (e: unknown) {
-      notify(getErrorMessage(e, "Failed to save details"), "error", 5000);
-    } finally {
-      setDetailSaving(false);
-    }
-  }, [detailPersonnelId, detailForm.userId, detailForm.canAuthorizePurchases]);
 
   return (
     <div className="content-block content-block--fill">
@@ -217,8 +114,7 @@ export default function PersonnelPage() {
       </div>
       <div className="page-grid-body">
         <AppDataGrid
-          ref={gridRef}
-          persistenceKey="itm-grid-personnel-v2"
+          persistenceKey="itm-grid-personnel-v3"
           dataSource={dataSource}
           repaintChangesOnly
           height="100%"
@@ -228,7 +124,8 @@ export default function PersonnelPage() {
               notify(getErrorMessage(err, "Failed to load form options"), "error", 5000);
             });
           }}
-          onInitNewRow={() => {
+          onInitNewRow={(e) => {
+            (e.data as { canAuthorizePurchases?: boolean }).canAuthorizePurchases = false;
             loadFormMeta().catch((err: unknown) => {
               notify(getErrorMessage(err, "Failed to load form options"), "error", 5000);
             });
@@ -238,7 +135,7 @@ export default function PersonnelPage() {
           }}
         >
           <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
-            <Popup title="Personnel" showTitle width={560} height="auto" />
+            <Popup title="Personnel" showTitle width={640} height="auto" />
           </Editing>
           <FilterRow visible />
           <Column
@@ -277,38 +174,63 @@ export default function PersonnelPage() {
           >
             <RequiredRule />
           </Column>
-          <Column type="buttons" width={200}>
+          <Column
+            dataField="userId"
+            caption="Linked app user"
+            visible={false}
+            lookup={{
+              dataSource: userLookupRows,
+              valueExpr: "id",
+              displayExpr: "label",
+              allowSearch: true,
+              allowClearing: true,
+            }}
+          />
+          <Column
+            dataField="canAuthorizePurchases"
+            caption="Can authorize purchases"
+            dataType="boolean"
+            visible={false}
+          />
+          <Column
+            dataField="createdAt"
+            caption="Created"
+            dataType="datetime"
+            visible={false}
+            allowEditing={false}
+            formItem={{
+              editorType: "dxTextBox",
+              editorOptions: { readOnly: true },
+            }}
+          />
+          <Column
+            dataField="updatedAt"
+            caption="Updated"
+            dataType="datetime"
+            visible={false}
+            allowEditing={false}
+            formItem={{
+              editorType: "dxTextBox",
+              editorOptions: { readOnly: true },
+            }}
+          />
+          <Column type="buttons" width={120}>
             <ColumnButton name="edit" />
-            <ColumnButton name="delete" />
             <ColumnButton
-              hint="Account, authorizer flag, and timestamps"
-              icon="preferences"
-              text="Details"
+              hint="View"
+              icon="eyeopen"
+              text="View"
               onClick={(e) => {
-                const row = e.row?.data as Record<string, unknown> | undefined;
-                const id = row?.id as string | undefined;
-                if (!row || !id || e.row?.isNewRow) {
-                  notify("Save the personnel record first", "warning", 2500);
+                if (e.row?.isNewRow) {
                   return;
                 }
-                const title =
-                  (row.fullName as string) ||
-                  `${String(row.firstName ?? "")} ${String(row.lastName ?? "")}`.trim() ||
-                  id;
-                void openPersonnelDetails(id, title);
-              }}
-            />
-            <ColumnButton
-              hint="View personal bin"
-              icon="box"
-              text="Bin"
-              onClick={(ev) => {
-                const row = ev.row?.data as Record<string, unknown> | undefined;
+                const row = e.row?.data as Record<string, unknown> | undefined;
                 if (row) {
-                  openBin(row);
+                  openView(row);
                 }
               }}
             />
+            <ColumnButton name="delete" />
           </Column>
           <Paging defaultPageSize={20} />
           <Pager showPageSizeSelector showInfo />
@@ -316,87 +238,53 @@ export default function PersonnelPage() {
       </div>
 
       <PopupDx
-        visible={detailOpen}
+        visible={viewOpen}
         onHiding={() => {
-          setDetailOpen(false);
-          setDetailPersonnelId(null);
+          setViewOpen(false);
+          setViewRow(null);
         }}
         showTitle
-        title={`Personnel details — ${detailTitle}`}
-        width={480}
+        title="Personnel"
+        width={440}
         height="auto"
         showCloseButton
       >
-        <Form formData={detailForm} onFieldDataChanged={onDetailFieldChanged}>
-          <Item
-            dataField="userId"
-            editorType="dxSelectBox"
-            editorOptions={{
-              dataSource: userLookupRows,
-              displayExpr: "label",
-              valueExpr: "id",
-              searchEnabled: true,
-              showDropDownButton: true,
-              showClearButton: true,
-              placeholder: "No linked user",
-            }}
+        {viewRow ? (
+          <div
+            className="personnel-view-readonly"
+            style={{ fontSize: 14, lineHeight: 1.55, color: "var(--base-text-color, #111)" }}
           >
-            <Label text="Linked app user" />
-          </Item>
-          <Item
-            dataField="canAuthorizePurchases"
-            editorType="dxCheckBox"
-            editorOptions={{ text: "Can authorize purchases" }}
-          >
-            <Label visible={false} />
-          </Item>
-        </Form>
-        <div
-          className="personnel-detail-meta"
-          style={{
-            marginTop: 10,
-            fontSize: 13,
-            color: "var(--base-text-color-alpha-7, rgba(0,0,0,0.65))",
-            lineHeight: 1.5,
-          }}
-        >
-          <div>
-            <strong>Created</strong> {formatDetailDate(detailForm.createdAt)}
+            <div>
+              <strong>Name</strong>{" "}
+              {(viewRow.fullName as string) ||
+                `${String(viewRow.firstName ?? "")} ${String(viewRow.lastName ?? "")}`.trim() ||
+                "—"}
+            </div>
+            <div>
+              <strong>Email</strong> {String(viewRow.email ?? "—")}
+            </div>
+            <div>
+              <strong>Phone</strong> {String(viewRow.phone ?? "—")}
+            </div>
+            <div>
+              <strong>Site</strong> {String(viewRow.siteLabel ?? "—")}
+            </div>
+            <div>
+              <strong>Linked app user</strong> {String(viewRow.userEmail ?? "—")}
+            </div>
+            <div>
+              <strong>Can authorize purchases</strong>{" "}
+              {viewRow.canAuthorizePurchases ? "Yes" : "No"}
+            </div>
+            <div>
+              <strong>Created</strong> {formatWhen(viewRow.createdAt)}
+            </div>
+            <div>
+              <strong>Updated</strong> {formatWhen(viewRow.updatedAt)}
+            </div>
           </div>
-          <div>
-            <strong>Updated</strong> {formatDetailDate(detailForm.updatedAt)}
-          </div>
-        </div>
-        <div style={{ padding: "12px 0 0", textAlign: "right", display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <Button
-            text="Cancel"
-            stylingMode="outlined"
-            disabled={detailSaving}
-            onClick={() => {
-              setDetailOpen(false);
-              setDetailPersonnelId(null);
-            }}
-          />
-          <Button
-            text="Save details"
-            type="default"
-            stylingMode="contained"
-            disabled={detailSaving}
-            onClick={() => void savePersonnelDetails()}
-          />
-        </div>
+        ) : null}
       </PopupDx>
-
-      <PersonnelBinPopup
-        visible={binOpen}
-        personnelId={binPersonnelId}
-        title={binTitle}
-        products={products}
-        onClose={() => {
-          setBinOpen(false);
-          setBinPersonnelId(null);
-        }}
-      />
     </div>
   );
 }
