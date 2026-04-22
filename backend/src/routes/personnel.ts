@@ -21,9 +21,12 @@ const createSchema = z.object({
   siteId: z.string().min(1),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
-  email: z.string().email().optional().nullable(),
-  phone: z.string().optional().nullable(),
-  userId: z.string().optional().nullable(),
+  email: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.string().email().nullable().optional()),
+  phone: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
+  userId: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
   canAuthorizePurchases: z.boolean().optional(),
 });
 
@@ -453,10 +456,18 @@ router.delete("/:id", async (req, res) => {
     await prisma.personnel.delete({ where: { id: req.params.id } });
     res.status(204).send();
   } catch (e: unknown) {
-    const code = (e as { code?: string })?.code;
-    if (code === "P2025") {
-      res.status(404).json({ error: "Not found" });
-      return;
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      if (e.code === "P2025") {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      if (e.code === "P2003") {
+        res.status(409).json({
+          error:
+            "Cannot delete this personnel record while it is referenced (e.g. as purchase authorizer). Reassign or remove those records first.",
+        });
+        return;
+      }
     }
     throw e;
   }

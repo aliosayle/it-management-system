@@ -8,8 +8,27 @@ import {
   Editing,
   Popup,
   RequiredRule,
+  EmailRule,
   ColumnButton,
 } from "devextreme-react/data-grid";
+
+/** Remove grid-only / mirrored fields; normalize empty strings for the API. */
+function toPersonnelSavePayload(row: Record<string, unknown>): Record<string, unknown> {
+  const p = { ...row };
+  delete p.fullName;
+  delete p.siteLabel;
+  delete p.userEmail;
+  if (typeof p.email === "string" && p.email.trim() === "") {
+    p.email = null;
+  }
+  if (typeof p.phone === "string" && p.phone.trim() === "") {
+    p.phone = null;
+  }
+  if (p.userId === "" || p.userId === undefined) {
+    p.userId = null;
+  }
+  return p;
+}
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
 import {
@@ -63,29 +82,28 @@ export default function PersonnelPage() {
     })();
   }, [loadFormMeta]);
 
+  const userLookupRows = useMemo(
+    () =>
+      (meta?.users ?? []).map((u) => ({
+        ...u,
+        label: `${u.displayName} (${u.email})`,
+      })),
+    [meta],
+  );
+
   const dataSource = useMemo(
     () =>
       new CustomStore({
         key: "id",
         load: () => apiFetch("/api/personnel") as Promise<Record<string, unknown>[]>,
-        insert: (values) => {
-          const payload = { ...(values as Record<string, unknown>) };
-          delete payload.fullName;
-          delete payload.siteLabel;
-          delete payload.userEmail;
-          delete payload.userId;
-          return apiFetch("/api/personnel", {
+        insert: (values) =>
+          apiFetch("/api/personnel", {
             method: "POST",
-            body: JSON.stringify(payload),
-          }) as Promise<Record<string, unknown>>;
-        },
+            body: JSON.stringify(toPersonnelSavePayload(values as Record<string, unknown>)),
+          }) as Promise<Record<string, unknown>>,
         update: (key, values) => {
-          const payload = { ...(values as Record<string, unknown>) };
+          const payload = toPersonnelSavePayload(values as Record<string, unknown>);
           delete payload.id;
-          delete payload.fullName;
-          delete payload.siteLabel;
-          delete payload.userEmail;
-          delete payload.userId;
           return apiFetch(`/api/personnel/${key}`, {
             method: "PATCH",
             body: JSON.stringify(payload),
@@ -133,7 +151,7 @@ export default function PersonnelPage() {
         }}
       >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
-          <Popup title="Personnel" showTitle width={560} height="auto" />
+          <Popup title="Personnel" showTitle width={640} height="auto" />
         </Editing>
         <FilterRow visible />
         <Column
@@ -149,8 +167,22 @@ export default function PersonnelPage() {
           <RequiredRule />
         </Column>
         <Column dataField="fullName" caption="Full name" allowEditing={false} formItem={{ visible: false }} />
-        <Column dataField="email" />
+        <Column dataField="email" width={220}>
+          <EmailRule ignoreEmptyValue />
+        </Column>
         <Column dataField="phone" />
+        <Column
+          dataField="userId"
+          caption="Linked app user"
+          width={260}
+          lookup={{
+            dataSource: userLookupRows,
+            valueExpr: "id",
+            displayExpr: "label",
+            allowSearch: true,
+            allowClearing: true,
+          }}
+        />
         <Column
           dataField="siteId"
           caption="Site"
@@ -183,7 +215,9 @@ export default function PersonnelPage() {
           allowEditing={false}
           formItem={{ visible: false }}
         />
-        <Column type="buttons" width={100}>
+        <Column type="buttons" width={160}>
+          <ColumnButton name="edit" />
+          <ColumnButton name="delete" />
           <ColumnButton
             hint="View personal bin"
             icon="box"
