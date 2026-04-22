@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -7,11 +8,11 @@ const router = Router();
 router.use(requireAuth);
 
 const createSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
 });
 
 const updateSchema = z.object({
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
 });
 
 router.get("/", async (_req, res) => {
@@ -25,8 +26,16 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const row = await prisma.company.create({ data: parsed.data });
-  res.status(201).json(row);
+  try {
+    const row = await prisma.company.create({ data: parsed.data });
+    res.status(201).json(row);
+  } catch (e: unknown) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      res.status(409).json({ error: "A company with this name already exists" });
+      return;
+    }
+    throw e;
+  }
 });
 
 router.get("/:id", async (req, res) => {
@@ -51,10 +60,15 @@ router.patch("/:id", async (req, res) => {
     });
     res.json(row);
   } catch (e: unknown) {
-    const code = (e as { code?: string })?.code;
-    if (code === "P2025") {
-      res.status(404).json({ error: "Not found" });
-      return;
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      if (e.code === "P2025") {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      if (e.code === "P2002") {
+        res.status(409).json({ error: "A company with this name already exists" });
+        return;
+      }
     }
     throw e;
   }

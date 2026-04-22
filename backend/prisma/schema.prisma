@@ -42,7 +42,7 @@ model User {
 
 model Company {
   id        String   @id @default(cuid())
-  name      String
+  name      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   sites     Site[]

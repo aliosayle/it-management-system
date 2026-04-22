@@ -160,10 +160,19 @@ router.delete("/:id", async (req, res) => {
     await prisma.product.delete({ where: { id: req.params.id } });
     res.status(204).send();
   } catch (e: unknown) {
-    const code = (e as { code?: string })?.code;
-    if (code === "P2025") {
-      res.status(404).json({ error: "Not found" });
-      return;
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      if (e.code === "P2025") {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      /** FK still points at this product (e.g. purchase lines). */
+      if (e.code === "P2003") {
+        res.status(409).json({
+          error:
+            "This product cannot be deleted while it appears on purchase lines. Edit or remove those purchases first.",
+        });
+        return;
+      }
     }
     throw e;
   }
