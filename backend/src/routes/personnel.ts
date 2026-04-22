@@ -417,17 +417,15 @@ router.patch("/:id", async (req, res) => {
     return;
   }
   const raw = parsed.data;
-  /** Relation `connect` / `disconnect` — avoids clients where scalar `userId` is rejected on update. */
-  const data: Prisma.PersonnelUpdateInput = {};
-  if (raw.siteId !== undefined) {
-    data.site = { connect: { id: raw.siteId } };
-  }
+  /** Unchecked update: scalar FKs + flags. Requires DB column `canAuthorizePurchases` and a client from `prisma generate`. */
+  const data: Prisma.PersonnelUncheckedUpdateInput = {};
+  if (raw.siteId !== undefined) data.siteId = raw.siteId;
   if (raw.firstName !== undefined) data.firstName = raw.firstName;
   if (raw.lastName !== undefined) data.lastName = raw.lastName;
   if (raw.email !== undefined) data.email = raw.email;
   if (raw.phone !== undefined) data.phone = raw.phone;
   if (raw.userId !== undefined) {
-    data.user = raw.userId ? { connect: { id: raw.userId } } : { disconnect: true };
+    data.userId = raw.userId || null;
   }
   if (raw.canAuthorizePurchases !== undefined) {
     data.canAuthorizePurchases = raw.canAuthorizePurchases;
