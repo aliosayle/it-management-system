@@ -139,16 +139,18 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const data = {
-    ...parsed.data,
-    userId: parsed.data.userId || null,
-    email: parsed.data.email ?? null,
-    phone: parsed.data.phone ?? null,
-    canAuthorizePurchases: parsed.data.canAuthorizePurchases ?? false,
-  };
+  const { siteId, userId, canAuthorizePurchases, firstName, lastName, email, phone } = parsed.data;
   try {
     const row = await prisma.personnel.create({
-      data,
+      data: {
+        firstName,
+        lastName,
+        email: email ?? null,
+        phone: phone ?? null,
+        canAuthorizePurchases: canAuthorizePurchases ?? false,
+        site: { connect: { id: siteId } },
+        ...(userId ? { user: { connect: { id: userId } } } : {}),
+      },
       include: {
         site: { include: { company: { select: { name: true } } } },
         user: { select: { id: true, email: true, displayName: true } },
@@ -415,17 +417,24 @@ router.patch("/:id", async (req, res) => {
     return;
   }
   const raw = parsed.data;
-  const data: Prisma.PersonnelUncheckedUpdateInput = {};
-  if (raw.siteId !== undefined) data.siteId = raw.siteId;
+  /** Relation `connect` / `disconnect` — avoids clients where scalar `userId` is rejected on update. */
+  const data: Prisma.PersonnelUpdateInput = {};
+  if (raw.siteId !== undefined) {
+    data.site = { connect: { id: raw.siteId } };
+  }
   if (raw.firstName !== undefined) data.firstName = raw.firstName;
   if (raw.lastName !== undefined) data.lastName = raw.lastName;
   if (raw.email !== undefined) data.email = raw.email;
   if (raw.phone !== undefined) data.phone = raw.phone;
   if (raw.userId !== undefined) {
-    data.userId = raw.userId || null;
+    data.user = raw.userId ? { connect: { id: raw.userId } } : { disconnect: true };
   }
   if (raw.canAuthorizePurchases !== undefined) {
     data.canAuthorizePurchases = raw.canAuthorizePurchases;
+  }
+  if (Object.keys(data).length === 0) {
+    res.status(400).json({ error: "No changes" });
+    return;
   }
   try {
     const row = await prisma.personnel.update({
