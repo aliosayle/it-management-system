@@ -22,11 +22,13 @@ import {
   type MovementTypeValue,
   movementTypeLabel,
 } from "../constants/movement-types";
+import { StockMovementProductSummary } from "../components/stock-movement-product-summary";
 
 type Product = {
   id: string;
   sku: string;
   name: string;
+  description: string | null;
   quantityOnHand: number;
 };
 
@@ -114,6 +116,10 @@ export default function StockPage() {
       notify("Select a movement type", "warning", 2000);
       return;
     }
+    if (!Number.isFinite(movementForm.quantity) || movementForm.quantity <= 0) {
+      notify("Enter a positive quantity", "warning", 2000);
+      return;
+    }
     try {
       await apiFetch("/api/stock/movements", {
         method: "POST",
@@ -121,7 +127,7 @@ export default function StockPage() {
           productId,
           type: movementForm.type,
           quantity: movementForm.quantity,
-          note: movementForm.note || null,
+          note: movementForm.note.trim() || null,
         }),
       });
       notify("Movement saved", "success", 2000);
@@ -226,11 +232,24 @@ export default function StockPage() {
         onHiding={() => setPopupOpen(false)}
         showTitle
         title="Stock movement"
-        width={440}
+        width={720}
         height="auto"
         showCloseButton
       >
-        <Form formData={movementForm} onFieldDataChanged={onMovementFieldChanged}>
+        {selectedProduct ? (
+          <StockMovementProductSummary
+            id={selectedProduct.id}
+            sku={selectedProduct.sku}
+            name={selectedProduct.name}
+            quantityOnHand={selectedProduct.quantityOnHand}
+            description={selectedProduct.description}
+          />
+        ) : null}
+        <Form
+          colCount={2}
+          formData={movementForm}
+          onFieldDataChanged={onMovementFieldChanged}
+        >
           <Item
             dataField="type"
             editorType="dxSelectBox"
@@ -256,14 +275,30 @@ export default function StockPage() {
           </Item>
           <Item
             dataField="note"
+            colSpan={2}
             editorType="dxTextArea"
-            editorOptions={{ height: 72 }}
+            editorOptions={{ height: 100 }}
           >
             <Label text="Note" />
           </Item>
         </Form>
-        <div style={{ padding: "8px 0 0", textAlign: "right" }}>
-          <Button text="Save" type="default" onClick={submitMovement} />
+        <div
+          style={{
+            padding: "12px 0 0",
+            display: "flex",
+            gap: 8,
+            justifyContent: "flex-end",
+          }}
+        >
+          <Button text="Cancel" stylingMode="outlined" onClick={() => setPopupOpen(false)} />
+          <Button
+            text="Save"
+            type="default"
+            stylingMode="contained"
+            onClick={() => {
+              void submitMovement();
+            }}
+          />
         </div>
       </Popup>
     </div>

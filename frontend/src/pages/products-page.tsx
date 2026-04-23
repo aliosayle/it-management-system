@@ -22,6 +22,7 @@ import Form, {
 } from "devextreme-react/form";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { StockMovementProductSummary } from "../components/stock-movement-product-summary";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 import type { ProductOption } from "../components/personnel-bin-popup";
@@ -55,7 +56,32 @@ type MovementRow = {
   user?: { displayName: string; email: string };
 };
 
-type ProductPick = { id: string; sku: string; name: string };
+type ProductPick = {
+  id: string;
+  sku: string;
+  name: string;
+  quantityOnHand: number;
+  description: string | null;
+};
+
+function productPickFromRow(row: Record<string, unknown>): ProductPick {
+  const qoh = row.quantityOnHand;
+  const qohNum =
+    typeof qoh === "number" && Number.isFinite(qoh) ? qoh : Number(qoh);
+  const desc = row.description;
+  return {
+    id: String(row.id),
+    sku: String(row.sku ?? ""),
+    name: String(row.name ?? ""),
+    quantityOnHand: Number.isFinite(qohNum) ? qohNum : 0,
+    description:
+      desc === null || desc === undefined
+        ? null
+        : String(desc).trim() === ""
+          ? null
+          : String(desc),
+  };
+}
 
 export default function ProductsPage() {
   const gridRef = useRef<DataGridRef>(null);
@@ -192,21 +218,13 @@ export default function ProductsPage() {
   }, []);
 
   const openMovementForRow = useCallback((row: Record<string, unknown>) => {
-    setMovementProduct({
-      id: String(row.id),
-      sku: String(row.sku ?? ""),
-      name: String(row.name ?? ""),
-    });
+    setMovementProduct(productPickFromRow(row));
     setMovementForm({ type: null, quantity: 1, note: "" });
     setMovementOpen(true);
   }, []);
 
   const openStatementForRow = useCallback((row: Record<string, unknown>) => {
-    setStatementProduct({
-      id: String(row.id),
-      sku: String(row.sku ?? ""),
-      name: String(row.name ?? ""),
-    });
+    setStatementProduct(productPickFromRow(row));
     setStatementOpen(true);
   }, []);
 
@@ -273,12 +291,17 @@ export default function ProductsPage() {
     () => (
       <>
         {movementProduct ? (
-          <p style={{ margin: "0 0 12px", fontSize: 13 }}>
-            <strong>{movementProduct.sku}</strong> — {movementProduct.name}
-          </p>
+          <StockMovementProductSummary
+            id={movementProduct.id}
+            sku={movementProduct.sku}
+            name={movementProduct.name}
+            quantityOnHand={movementProduct.quantityOnHand}
+            description={movementProduct.description}
+          />
         ) : null}
         <Form
           key={movementProduct?.id ?? "movement"}
+          colCount={2}
           formData={movementForm}
           onFieldDataChanged={onMovementFieldChanged}
         >
@@ -307,8 +330,9 @@ export default function ProductsPage() {
           </Item>
           <Item
             dataField="note"
+            colSpan={2}
             editorType="dxTextArea"
-            editorOptions={{ height: 72 }}
+            editorOptions={{ height: 100 }}
           >
             <Label text="Note" />
           </Item>
@@ -559,7 +583,7 @@ export default function ProductsPage() {
         }}
         showTitle
         title="Stock movement"
-        width={460}
+        width={720}
         height="auto"
         showCloseButton
         contentRender={renderMovementPopupContent}
