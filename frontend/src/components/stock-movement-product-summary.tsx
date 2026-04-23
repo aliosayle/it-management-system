@@ -1,5 +1,4 @@
 type Props = {
-  id: string;
   sku: string;
   name: string;
   quantityOnHand: number;
@@ -7,7 +6,6 @@ type Props = {
 };
 
 export function StockMovementProductSummary({
-  id,
   sku,
   name,
   quantityOnHand,
@@ -42,8 +40,6 @@ export function StockMovementProductSummary({
         <span>{name || "—"}</span>
         <strong>Qty on hand</strong>
         <span>{qtyLabel}</span>
-        <strong>Product ID</strong>
-        <span style={{ fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>{id}</span>
         {description ? (
           <>
             <strong>Description</strong>

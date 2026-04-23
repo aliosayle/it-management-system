@@ -51,7 +51,6 @@ type MovementRow = {
   quantity: number;
   balanceAfter: number;
   note: string | null;
-  purchaseId: string | null;
   createdAt: string;
   user?: { displayName: string; email: string };
 };
@@ -292,7 +291,6 @@ export default function ProductsPage() {
       <>
         {movementProduct ? (
           <StockMovementProductSummary
-            id={movementProduct.id}
             sku={movementProduct.sku}
             name={movementProduct.name}
             quantityOnHand={movementProduct.quantityOnHand}
@@ -379,7 +377,6 @@ export default function ProductsPage() {
         >
           <div style={{ flexShrink: 0 }}>
             <StockMovementProductSummary
-              id={statementProduct.id}
               sku={statementProduct.sku}
               name={statementProduct.name}
               quantityOnHand={statementProduct.quantityOnHand}
@@ -390,6 +387,7 @@ export default function ProductsPage() {
             <AppDataGrid
               ref={statementGridRef}
               key={statementProduct.id}
+              keyExpr="id"
               className="stock-movements-grid"
               persistenceKey={`itm-product-statement-${statementProduct.id}`}
               dataSource={movementsStatementStore}
@@ -409,7 +407,6 @@ export default function ProductsPage() {
               />
               <Column dataField="quantity" dataType="number" />
               <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
-              <Column dataField="purchaseId" caption="Purchase" width={120} />
               <Column dataField="note" />
               <Column
                 caption="User"
@@ -435,6 +432,7 @@ export default function ProductsPage() {
       <div className="page-grid-body">
         <AppDataGrid
           ref={gridRef}
+          keyExpr="id"
           persistenceKey="itm-grid-products"
           dataSource={dataSource}
           repaintChangesOnly
@@ -467,12 +465,6 @@ export default function ProductsPage() {
           <Popup title="Product" showTitle width={480} height="auto" />
         </Editing>
         <FilterRow visible />
-        <Column
-          dataField="id"
-          visible={false}
-          allowEditing={false}
-          formItem={{ visible: false }}
-        />
         <Column dataField="sku" width={140}>
           <RequiredRule />
         </Column>
