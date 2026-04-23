@@ -12,6 +12,7 @@ router.use(requireAuth);
 const createSchema = z.object({
   sku: z.string().min(1),
   name: z.string().min(1),
+  category: z.string().max(128).optional(),
   description: z.string().optional().nullable(),
   quantityOnHand: z.number().nonnegative().optional(),
 });
@@ -19,6 +20,7 @@ const createSchema = z.object({
 const updateSchema = z.object({
   sku: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
+  category: z.string().max(128).optional(),
   description: z.string().optional().nullable(),
   quantityOnHand: z.number().nonnegative().optional(),
 });
@@ -27,6 +29,7 @@ function productJson(p: {
   id: string;
   sku: string;
   name: string;
+  category: string;
   description: string | null;
   quantityOnHand: Prisma.Decimal;
   createdAt: Date;
@@ -88,12 +91,13 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { sku, name, description, quantityOnHand } = parsed.data;
+  const { sku, name, category, description, quantityOnHand } = parsed.data;
   try {
     const p = await prisma.product.create({
       data: {
         sku,
         name,
+        category: category?.trim() ?? "",
         description: description ?? undefined,
         quantityOnHand:
           quantityOnHand !== undefined
@@ -127,10 +131,11 @@ router.patch("/:id", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { sku, name, description, quantityOnHand } = parsed.data;
+  const { sku, name, category, description, quantityOnHand } = parsed.data;
   const data: Prisma.ProductUpdateInput = {};
   if (sku !== undefined) data.sku = sku;
   if (name !== undefined) data.name = name;
+  if (category !== undefined) data.category = category.trim();
   if (description !== undefined) data.description = description;
   if (quantityOnHand !== undefined)
     data.quantityOnHand = new Prisma.Decimal(quantityOnHand);

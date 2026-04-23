@@ -433,7 +433,7 @@ export default function ProductsPage() {
         <AppDataGrid
           ref={gridRef}
           keyExpr="id"
-          persistenceKey="itm-grid-products"
+          persistenceKey="itm-grid-products-v2"
           dataSource={dataSource}
           repaintChangesOnly
           focusedRowEnabled
@@ -455,7 +455,9 @@ export default function ProductsPage() {
             />
           }
           onInitNewRow={(e) => {
-            (e.data as { quantityOnHand?: number }).quantityOnHand = 0;
+            const d = e.data as { quantityOnHand?: number; category?: string };
+            d.quantityOnHand = 0;
+            d.category = "";
           }}
           onDataErrorOccurred={(e) => {
             notify(getDataGridErrorMessage(e), "error", 5000);
@@ -468,6 +470,7 @@ export default function ProductsPage() {
         <Column dataField="sku" width={140}>
           <RequiredRule />
         </Column>
+        <Column dataField="category" caption="Category" width={140} />
         <Column dataField="name" width={220}>
           <RequiredRule />
         </Column>

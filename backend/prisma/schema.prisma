@@ -86,6 +86,8 @@ model Product {
   id                 String             @id @default(cuid())
   sku                String             @unique
   name               String
+  /** User-defined grouping for filtering and reporting (e.g. IT hardware, consumables). */
+  category           String             @default("") @db.VarChar(128)
   description        String?
   quantityOnHand     Decimal            @default(0) @db.Decimal(14, 4)
   createdAt          DateTime           @default(now())
