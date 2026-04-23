@@ -368,40 +368,59 @@ export default function ProductsPage() {
   const renderStatementPopupContent = useCallback(
     () =>
       statementProduct ? (
-        <div style={{ height: 460, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <AppDataGrid
-            ref={statementGridRef}
-            key={statementProduct.id}
-            className="stock-movements-grid"
-            persistenceKey={`itm-product-statement-${statementProduct.id}`}
-            dataSource={movementsStatementStore}
-            height="100%"
-            showAddRowButton={false}
-            onDataErrorOccurred={(e) => {
-              notify(getDataGridErrorMessage(e), "error", 5000);
-            }}
-          >
-            <FilterRow visible />
-            <Column dataField="createdAt" dataType="datetime" caption="When" />
-            <Column
-              dataField="type"
-              caption="Type"
-              width={200}
-              calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            height: 520,
+            minHeight: 0,
+          }}
+        >
+          <div style={{ flexShrink: 0 }}>
+            <StockMovementProductSummary
+              id={statementProduct.id}
+              sku={statementProduct.sku}
+              name={statementProduct.name}
+              quantityOnHand={statementProduct.quantityOnHand}
+              description={statementProduct.description}
             />
-            <Column dataField="quantity" dataType="number" />
-            <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
-            <Column dataField="purchaseId" caption="Purchase" width={120} />
-            <Column dataField="note" />
-            <Column
-              caption="User"
-              calculateCellValue={(row: MovementRow) =>
-                row.user?.displayName || row.user?.email || ""
-              }
-            />
-            <Paging defaultPageSize={20} />
-            <Pager showPageSizeSelector showInfo />
-          </AppDataGrid>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <AppDataGrid
+              ref={statementGridRef}
+              key={statementProduct.id}
+              className="stock-movements-grid"
+              persistenceKey={`itm-product-statement-${statementProduct.id}`}
+              dataSource={movementsStatementStore}
+              height="100%"
+              showAddRowButton={false}
+              onDataErrorOccurred={(e) => {
+                notify(getDataGridErrorMessage(e), "error", 5000);
+              }}
+            >
+              <FilterRow visible />
+              <Column dataField="createdAt" dataType="datetime" caption="When" />
+              <Column
+                dataField="type"
+                caption="Type"
+                width={200}
+                calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
+              />
+              <Column dataField="quantity" dataType="number" />
+              <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
+              <Column dataField="purchaseId" caption="Purchase" width={120} />
+              <Column dataField="note" />
+              <Column
+                caption="User"
+                calculateCellValue={(row: MovementRow) =>
+                  row.user?.displayName || row.user?.email || ""
+                }
+              />
+              <Paging defaultPageSize={20} />
+              <Pager showPageSizeSelector showInfo />
+            </AppDataGrid>
+          </div>
         </div>
       ) : null,
     [statementProduct, movementsStatementStore],
@@ -601,8 +620,8 @@ export default function ProductsPage() {
             ? `Stock statement — ${statementProduct.sku}`
             : "Stock statement"
         }
-        width={920}
-        height={560}
+        width={1080}
+        height={620}
         showCloseButton
         contentRender={renderStatementPopupContent}
       />

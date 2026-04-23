@@ -164,11 +164,6 @@ export default function StockPage() {
               width="100%"
             />
           </div>
-          {selectedProduct ? (
-            <span className="stock-grid-toolbar__meta">
-              {selectedProduct.sku} · on hand {selectedProduct.quantityOnHand}
-            </span>
-          ) : null}
           <Button
             text="New movement"
             type="default"
@@ -191,40 +186,56 @@ export default function StockPage() {
         <h2>Stock</h2>
       </div>
 
-      <div className="page-grid-body">
-        <AppDataGrid
-          ref={gridRef}
-          className="stock-movements-grid"
-          persistenceKey="itm-grid-stock-movements"
-          dataSource={movementsStore}
-          height="100%"
-          showAddRowButton={false}
-          toolbarItems={stockToolbarItems}
-          onDataErrorOccurred={(e) => {
-            notify(getDataGridErrorMessage(e), "error", 5000);
-          }}
-        >
-          <FilterRow visible />
-          <Column dataField="createdAt" dataType="datetime" caption="When" />
-          <Column
-            dataField="type"
-            caption="Type"
-            width={200}
-            calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
-          />
-          <Column dataField="quantity" dataType="number" />
-          <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
-          <Column dataField="purchaseId" caption="Purchase" width={120} />
-          <Column dataField="note" />
-          <Column
-            caption="User"
-            calculateCellValue={(row: MovementRow) =>
-              row.user?.displayName || row.user?.email || ""
-            }
-          />
-          <Paging defaultPageSize={20} />
-          <Pager showPageSizeSelector showInfo />
-        </AppDataGrid>
+      <div
+        className="page-grid-body"
+        style={{ gap: 12, display: "flex", flexDirection: "column", minHeight: 0 }}
+      >
+        {selectedProduct ? (
+          <div style={{ flexShrink: 0 }}>
+            <StockMovementProductSummary
+              id={selectedProduct.id}
+              sku={selectedProduct.sku}
+              name={selectedProduct.name}
+              quantityOnHand={selectedProduct.quantityOnHand}
+              description={selectedProduct.description}
+            />
+          </div>
+        ) : null}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <AppDataGrid
+            ref={gridRef}
+            className="stock-movements-grid"
+            persistenceKey="itm-grid-stock-movements"
+            dataSource={movementsStore}
+            height="100%"
+            showAddRowButton={false}
+            toolbarItems={stockToolbarItems}
+            onDataErrorOccurred={(e) => {
+              notify(getDataGridErrorMessage(e), "error", 5000);
+            }}
+          >
+            <FilterRow visible />
+            <Column dataField="createdAt" dataType="datetime" caption="When" />
+            <Column
+              dataField="type"
+              caption="Type"
+              width={200}
+              calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
+            />
+            <Column dataField="quantity" dataType="number" />
+            <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
+            <Column dataField="purchaseId" caption="Purchase" width={120} />
+            <Column dataField="note" />
+            <Column
+              caption="User"
+              calculateCellValue={(row: MovementRow) =>
+                row.user?.displayName || row.user?.email || ""
+              }
+            />
+            <Paging defaultPageSize={20} />
+            <Pager showPageSizeSelector showInfo />
+          </AppDataGrid>
+        </div>
       </div>
 
       <Popup
