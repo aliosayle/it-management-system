@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CustomStore from "devextreme/data/custom_store";
 import {
   Column,
+  ColumnButton,
   Paging,
   Pager,
   FilterRow,
@@ -13,13 +14,22 @@ import {
 } from "devextreme-react/data-grid";
 import Button from "devextreme-react/button";
 import PopupDx from "devextreme-react/popup";
-import Form, { Item, Label, RequiredRule as FormRequiredRule } from "devextreme-react/form";
-import type { FormTypes } from "devextreme-react/form";
+import Form, {
+  Item,
+  Label,
+  RequiredRule as FormRequiredRule,
+  type FormTypes,
+} from "devextreme-react/form";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 import type { ProductOption } from "../components/personnel-bin-popup";
+import {
+  MOVEMENT_TYPE_OPTIONS,
+  type MovementTypeValue,
+  movementTypeLabel,
+} from "../constants/movement-types";
 
 type PersonnelApi = {
   id: string;
@@ -34,8 +44,22 @@ type AssignForm = {
   note: string;
 };
 
+type MovementRow = {
+  id: string;
+  type: string;
+  quantity: number;
+  balanceAfter: number;
+  note: string | null;
+  purchaseId: string | null;
+  createdAt: string;
+  user?: { displayName: string; email: string };
+};
+
+type ProductPick = { id: string; sku: string; name: string };
+
 export default function ProductsPage() {
   const gridRef = useRef<DataGridRef>(null);
+  const statementGridRef = useRef<DataGridRef>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [personnelOptions, setPersonnelOptions] = useState<
     { id: string; label: string }[]
@@ -47,6 +71,17 @@ export default function ProductsPage() {
     quantity: 1,
     note: "",
   });
+
+  const [movementOpen, setMovementOpen] = useState(false);
+  const [movementProduct, setMovementProduct] = useState<ProductPick | null>(null);
+  const [movementForm, setMovementForm] = useState<{
+    type: MovementTypeValue | null;
+    quantity: number;
+    note: string;
+  }>({ type: null, quantity: 1, note: "" });
+
+  const [statementOpen, setStatementOpen] = useState(false);
+  const [statementProduct, setStatementProduct] = useState<ProductPick | null>(null);
 
   const loadAssignMeta = useCallback(async () => {
     const [pl, pr] = await Promise.all([
@@ -100,6 +135,25 @@ export default function ProductsPage() {
     [],
   );
 
+  const movementsStatementStore = useMemo(() => {
+    const pid = statementProduct?.id;
+    if (!pid) {
+      return new CustomStore({
+        key: "id",
+        load: () => Promise.resolve({ data: [], totalCount: 0 }),
+      });
+    }
+    return new CustomStore({
+      key: "id",
+      load: async () => {
+        const res = (await apiFetch(
+          `/api/products/${pid}/movements?skip=0&take=5000`,
+        )) as { items: MovementRow[] };
+        return { data: res.items, totalCount: res.items.length };
+      },
+    });
+  }, [statementProduct?.id]);
+
   const onAssignFieldChanged = useCallback((e: FormTypes.FieldDataChangedEvent) => {
     const { dataField, value } = e;
     if (!dataField) return;
@@ -131,6 +185,64 @@ export default function ProductsPage() {
     }
   }, [loadAssignMeta]);
 
+  const onMovementFieldChanged = useCallback((e: FormTypes.FieldDataChangedEvent) => {
+    const { dataField, value } = e;
+    if (!dataField) return;
+    setMovementForm((prev) => ({ ...prev, [dataField]: value }));
+  }, []);
+
+  const openMovementForRow = useCallback((row: Record<string, unknown>) => {
+    setMovementProduct({
+      id: String(row.id),
+      sku: String(row.sku ?? ""),
+      name: String(row.name ?? ""),
+    });
+    setMovementForm({ type: null, quantity: 1, note: "" });
+    setMovementOpen(true);
+  }, []);
+
+  const openStatementForRow = useCallback((row: Record<string, unknown>) => {
+    setStatementProduct({
+      id: String(row.id),
+      sku: String(row.sku ?? ""),
+      name: String(row.name ?? ""),
+    });
+    setStatementOpen(true);
+  }, []);
+
+  const submitMovementForProduct = useCallback(async () => {
+    if (!movementProduct?.id) {
+      return;
+    }
+    if (!movementForm.type) {
+      notify("Select a movement type", "warning", 2000);
+      return;
+    }
+    if (!Number.isFinite(movementForm.quantity) || movementForm.quantity <= 0) {
+      notify("Enter a positive quantity", "warning", 2000);
+      return;
+    }
+    try {
+      await apiFetch("/api/stock/movements", {
+        method: "POST",
+        body: JSON.stringify({
+          productId: movementProduct.id,
+          type: movementForm.type,
+          quantity: movementForm.quantity,
+          note: movementForm.note.trim() || null,
+        }),
+      });
+      notify("Movement saved", "success", 2000);
+      setMovementOpen(false);
+      setMovementProduct(null);
+      setMovementForm({ type: null, quantity: 1, note: "" });
+      gridRef.current?.instance().refresh();
+      statementGridRef.current?.instance().refresh();
+    } catch (e: unknown) {
+      notify(getErrorMessage(e, "Failed to save movement"), "error", 5000);
+    }
+  }, [movementProduct, movementForm]);
+
   const submitAssign = useCallback(async () => {
     const { personnelId, productId, quantity, note } = assignForm;
     if (!personnelId || !productId) {
@@ -157,6 +269,120 @@ export default function ProductsPage() {
     }
   }, [assignForm]);
 
+  const renderMovementPopupContent = useCallback(
+    () => (
+      <>
+        {movementProduct ? (
+          <p style={{ margin: "0 0 12px", fontSize: 13 }}>
+            <strong>{movementProduct.sku}</strong> — {movementProduct.name}
+          </p>
+        ) : null}
+        <Form
+          key={movementProduct?.id ?? "movement"}
+          formData={movementForm}
+          onFieldDataChanged={onMovementFieldChanged}
+        >
+          <Item
+            dataField="type"
+            editorType="dxSelectBox"
+            editorOptions={{
+              dataSource: [...MOVEMENT_TYPE_OPTIONS],
+              displayExpr: "text",
+              valueExpr: "value",
+              searchEnabled: true,
+              showClearButton: true,
+              placeholder: "Select type…",
+            }}
+          >
+            <Label text="Type" />
+            <FormRequiredRule />
+          </Item>
+          <Item
+            dataField="quantity"
+            editorType="dxNumberBox"
+            editorOptions={{ min: 0.0001, format: "#,##0.####" }}
+          >
+            <Label text="Quantity" />
+            <FormRequiredRule />
+          </Item>
+          <Item
+            dataField="note"
+            editorType="dxTextArea"
+            editorOptions={{ height: 72 }}
+          >
+            <Label text="Note" />
+          </Item>
+        </Form>
+        <div style={{ padding: "12px 0 0", textAlign: "right" }}>
+          <Button
+            text="Cancel"
+            stylingMode="outlined"
+            onClick={() => {
+              setMovementOpen(false);
+              setMovementProduct(null);
+            }}
+          />
+          <Button
+            text="Save"
+            type="default"
+            stylingMode="contained"
+            onClick={() => {
+              void submitMovementForProduct();
+            }}
+          />
+        </div>
+      </>
+    ),
+    [
+      movementProduct,
+      movementForm,
+      onMovementFieldChanged,
+      submitMovementForProduct,
+    ],
+  );
+
+  const renderStatementPopupContent = useCallback(
+    () =>
+      statementProduct ? (
+        <div style={{ height: 460, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <AppDataGrid
+            ref={statementGridRef}
+            key={statementProduct.id}
+            className="stock-movements-grid"
+            persistenceKey={`itm-product-statement-${statementProduct.id}`}
+            dataSource={movementsStatementStore}
+            height="100%"
+            showAddRowButton={false}
+            onDataErrorOccurred={(e) => {
+              notify(getDataGridErrorMessage(e), "error", 5000);
+            }}
+          >
+            <FilterRow visible />
+            <Column dataField="createdAt" dataType="datetime" caption="When" />
+            <Column
+              dataField="type"
+              caption="Type"
+              width={200}
+              calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
+            />
+            <Column dataField="quantity" dataType="number" />
+            <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
+            <Column dataField="purchaseId" caption="Purchase" width={120} />
+            <Column dataField="note" />
+            <Column
+              caption="User"
+              calculateCellValue={(row: MovementRow) =>
+                row.user?.displayName || row.user?.email || ""
+              }
+            />
+            <Paging defaultPageSize={20} />
+            <Pager showPageSizeSelector showInfo />
+          </AppDataGrid>
+        </div>
+      ) : null,
+    [statementProduct, movementsStatementStore],
+  );
+
   return (
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
@@ -165,35 +391,35 @@ export default function ProductsPage() {
 
       <div className="page-grid-body">
         <AppDataGrid
-        ref={gridRef}
-        persistenceKey="itm-grid-products"
-        dataSource={dataSource}
-        repaintChangesOnly
-        focusedRowEnabled
-        height="100%"
-        toolbarItems={
-          <GridToolbarItem
-            location="before"
-            widget="dxButton"
-            options={{
-              text: "Assign to personnel bin",
-              type: "default",
-              stylingMode: "contained",
-              icon: "user",
-              disabled: personnelOptions.length === 0 || productOptions.length === 0,
-              onClick: () => {
-                void openAssignPopup();
-              },
-            }}
-          />
-        }
-        onInitNewRow={(e) => {
-          (e.data as { quantityOnHand?: number }).quantityOnHand = 0;
-        }}
-        onDataErrorOccurred={(e) => {
-          notify(getDataGridErrorMessage(e), "error", 5000);
-        }}
-      >
+          ref={gridRef}
+          persistenceKey="itm-grid-products"
+          dataSource={dataSource}
+          repaintChangesOnly
+          focusedRowEnabled
+          height="100%"
+          toolbarItems={
+            <GridToolbarItem
+              location="before"
+              widget="dxButton"
+              options={{
+                text: "Assign to personnel bin",
+                type: "default",
+                stylingMode: "contained",
+                icon: "user",
+                disabled: personnelOptions.length === 0 || productOptions.length === 0,
+                onClick: () => {
+                  void openAssignPopup();
+                },
+              }}
+            />
+          }
+          onInitNewRow={(e) => {
+            (e.data as { quantityOnHand?: number }).quantityOnHand = 0;
+          }}
+          onDataErrorOccurred={(e) => {
+            notify(getDataGridErrorMessage(e), "error", 5000);
+          }}
+        >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
           <Popup title="Product" showTitle width={480} height="auto" />
         </Editing>
@@ -226,6 +452,36 @@ export default function ProductsPage() {
           allowEditing={false}
           formItem={{ visible: false }}
         />
+        <Column type="buttons" width={132}>
+          <ColumnButton name="edit" />
+          <ColumnButton
+            hint="New stock movement"
+            icon="import"
+            onClick={(e) => {
+              if (e.row?.isNewRow) {
+                return;
+              }
+              const row = e.row?.data as Record<string, unknown> | undefined;
+              if (row?.id) {
+                openMovementForRow(row);
+              }
+            }}
+          />
+          <ColumnButton
+            hint="Stock statement (movements)"
+            icon="orderedlist"
+            onClick={(e) => {
+              if (e.row?.isNewRow) {
+                return;
+              }
+              const row = e.row?.data as Record<string, unknown> | undefined;
+              if (row?.id) {
+                openStatementForRow(row);
+              }
+            }}
+          />
+          <ColumnButton name="delete" />
+        </Column>
         <Paging defaultPageSize={20} />
         <Pager showPageSizeSelector showInfo />
       </AppDataGrid>
@@ -294,6 +550,38 @@ export default function ProductsPage() {
           <Button text="Add to bin" type="default" stylingMode="contained" onClick={submitAssign} />
         </div>
       </PopupDx>
+
+      <PopupDx
+        visible={movementOpen}
+        onHiding={() => {
+          setMovementOpen(false);
+          setMovementProduct(null);
+        }}
+        showTitle
+        title="Stock movement"
+        width={460}
+        height="auto"
+        showCloseButton
+        contentRender={renderMovementPopupContent}
+      />
+
+      <PopupDx
+        visible={statementOpen}
+        onHiding={() => {
+          setStatementOpen(false);
+          setStatementProduct(null);
+        }}
+        showTitle
+        title={
+          statementProduct
+            ? `Stock statement — ${statementProduct.sku}`
+            : "Stock statement"
+        }
+        width={920}
+        height={560}
+        showCloseButton
+        contentRender={renderStatementPopupContent}
+      />
     </div>
   );
 }
