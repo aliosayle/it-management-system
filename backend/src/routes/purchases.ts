@@ -4,7 +4,7 @@ import path from "path";
 import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { MovementType, Prisma, PurchaseStatus } from "@prisma/client";
+import { MovementType, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { applyStockMovementInTransaction } from "../lib/warehouse-inbound.js";
 import {
@@ -23,6 +23,13 @@ type PurchaseDestination = (typeof PURCHASE_DESTINATIONS)[number];
 
 const PURCHASE_STATUSES = ["PENDING", "COMPLETE", "CANCELLED"] as const;
 type PurchaseStatusLiteral = (typeof PURCHASE_STATUSES)[number];
+
+/** Mirrors Prisma `PurchaseStatus` — string literals so the API boots even if `prisma generate` was not run yet. */
+const PS = {
+  PENDING: "PENDING",
+  COMPLETE: "COMPLETE",
+  CANCELLED: "CANCELLED",
+} as const satisfies Record<PurchaseStatusLiteral, PurchaseStatusLiteral>;
 
 const router = Router();
 router.use(requireAuth);
@@ -100,7 +107,7 @@ type LineInput = { productId: string; quantity: number; unitPrice: number };
 function purchaseListItem(p: {
   id: string;
   destination: PurchaseDestination;
-  status: PurchaseStatus;
+  status: PurchaseStatusLiteral;
   bonOriginalName: string;
   notes: string | null;
   createdAt: Date;
@@ -489,7 +496,7 @@ router.post("/", (req, res, next) => {
   }
 
   const data = parsed.data;
-  const status = data.status ?? PurchaseStatus.PENDING;
+  const status = data.status ?? PS.PENDING;
 
   if (data.destination === "PERSONNEL_BIN" && !data.targetPersonnelId) {
     fs.unlink(file.path, () => {});
@@ -590,7 +597,7 @@ router.post("/", (req, res, next) => {
         include: { lines: true },
       });
 
-      if (status === PurchaseStatus.COMPLETE) {
+      if (status === PS.COMPLETE) {
         const linesForInv = p.lines.map((line) => ({
           productId: line.productId,
           quantity: new Prisma.Decimal(line.quantity.toString()),
@@ -628,7 +635,7 @@ router.delete("/:id", async (req, res) => {
   }
   try {
     await prisma.$transaction(async (tx) => {
-      if (existing.status === PurchaseStatus.COMPLETE) {
+      if (existing.status === PS.COMPLETE) {
         await reverseCompletedPurchaseInventory(tx, {
           purchaseId: id,
           destination: existing.destination as PurchaseDestination,
@@ -714,16 +721,16 @@ router.patch("/:id", (req, res, next) => {
     return;
   }
 
-  if (existing.status === PurchaseStatus.CANCELLED) {
+  if (existing.status === PS.CANCELLED) {
     if (hasFile && req.file) fs.unlink(req.file.path, () => {});
     res.status(400).json({ error: "Cannot modify a cancelled purchase" });
     return;
   }
 
   if (
-    p.status === PurchaseStatus.CANCELLED &&
+    p.status === PS.CANCELLED &&
     p.lines !== undefined &&
-    existing.status === PurchaseStatus.COMPLETE
+    existing.status === PS.COMPLETE
   ) {
     if (hasFile && req.file) fs.unlink(req.file.path, () => {});
     res.status(400).json({
@@ -809,7 +816,7 @@ router.patch("/:id", (req, res, next) => {
   const nextStatus =
     p.status !== undefined ? p.status : (existing.status as PurchaseStatusLiteral);
 
-  if (existing.status === PurchaseStatus.COMPLETE && nextStatus === PurchaseStatus.PENDING) {
+  if (existing.status === PS.COMPLETE && nextStatus === PS.PENDING) {
     if (hasFile && req.file) fs.unlink(req.file.path, () => {});
     res.status(400).json({ error: "Cannot set a completed purchase back to pending" });
     return;
@@ -822,7 +829,7 @@ router.patch("/:id", (req, res, next) => {
       const movementNote =
         nextNotes !== undefined ? nextNotes : existing.notes;
 
-      if (existing.status === PurchaseStatus.COMPLETE && nextStatus === PurchaseStatus.CANCELLED) {
+      if (existing.status === PS.COMPLETE && nextStatus === PS.CANCELLED) {
         await reverseCompletedPurchaseInventory(tx, {
           purchaseId: id,
           destination: dest,
@@ -834,8 +841,8 @@ router.patch("/:id", (req, res, next) => {
 
       if (p.lines !== undefined) {
         if (
-          existing.status === PurchaseStatus.COMPLETE &&
-          nextStatus !== PurchaseStatus.CANCELLED
+          existing.status === PS.COMPLETE &&
+          nextStatus !== PS.CANCELLED
         ) {
           if (dest === "STOCK") {
             await replacePurchaseLinesStock(tx, id, userId, p.lines, movementNote ?? null);
@@ -862,7 +869,7 @@ router.patch("/:id", (req, res, next) => {
               data: { targetPersonnelId: newT },
             });
           }
-        } else if (existing.status === PurchaseStatus.PENDING) {
+        } else if (existing.status === PS.PENDING) {
           await replacePurchaseLinesOnly(tx, id, p.lines);
         }
       } else if (
@@ -870,7 +877,7 @@ router.patch("/:id", (req, res, next) => {
         p.targetPersonnelId !== undefined &&
         p.targetPersonnelId !== existing.targetPersonnelId &&
         p.lines === undefined &&
-        existing.status === PurchaseStatus.COMPLETE
+        existing.status === PS.COMPLETE
       ) {
         const oldT = existing.targetPersonnelId;
         const newT = p.targetPersonnelId;
@@ -886,7 +893,7 @@ router.patch("/:id", (req, res, next) => {
         }
       }
 
-      if (existing.status === PurchaseStatus.PENDING && nextStatus === PurchaseStatus.COMPLETE) {
+      if (existing.status === PS.PENDING && nextStatus === PS.COMPLETE) {
         const linesRows = await tx.purchaseLine.findMany({
           where: { purchaseId: id },
           orderBy: { lineIndex: "asc" },
@@ -915,7 +922,7 @@ router.patch("/:id", (req, res, next) => {
         supplierId?: string;
         notes?: string | null;
         targetPersonnelId?: string | null;
-        status?: PurchaseStatus;
+        status?: PurchaseStatusLiteral;
         bonStoredPath?: string;
         bonOriginalName?: string;
       } = {};
