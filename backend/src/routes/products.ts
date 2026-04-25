@@ -121,6 +121,7 @@ router.get("/:id/purchase-history", async (req, res) => {
       purchaseId: r.purchaseId,
       createdAt: r.purchase.createdAt,
       destination: r.purchase.destination,
+      lineDestination: r.destination,
       status: r.purchase.status,
       supplierId: r.purchase.supplier.id,
       supplierName: r.purchase.supplier.name,

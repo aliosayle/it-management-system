@@ -114,7 +114,8 @@ code {
 
 .purchase-form__lines-header {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 108px 108px 92px 44px;
+  grid-template-columns:
+    28px minmax(0, 1fr) minmax(88px, 100px) minmax(96px, 1fr) 80px 80px 72px 40px;
   gap: 8px;
   align-items: center;
   padding: 10px 12px;
@@ -129,7 +130,8 @@ code {
 
 .purchase-form__line-row {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 108px 108px 92px 44px;
+  grid-template-columns:
+    28px minmax(0, 1fr) minmax(88px, 100px) minmax(96px, 1fr) 80px 80px 72px 40px;
   gap: 8px;
   align-items: center;
   padding: 10px 12px;

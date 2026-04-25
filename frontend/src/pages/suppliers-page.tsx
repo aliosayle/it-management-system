@@ -23,6 +23,8 @@ type SupplierPurchaseLine = {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  lineDestination: string;
+  lineBinRecipientName: string | null;
 };
 
 type SupplierPurchaseRow = {
@@ -90,6 +92,8 @@ export default function SuppliersPage() {
               purchaseId: p.id,
               purchaseStatus: p.status,
               destination: p.destination,
+              lineDestination: line.lineDestination,
+              lineBinRecipientName: line.lineBinRecipientName,
               createdAt: p.createdAt,
               bonOriginalName: p.bonOriginalName,
               supplierTotal: p.totalAmount,
@@ -207,13 +211,18 @@ export default function SuppliersPage() {
             <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
             <Column dataField="purchaseStatus" caption="Status" width={90} />
             <Column
-              dataField="destination"
-              caption="Dest"
-              width={72}
-              calculateCellValue={(r: Record<string, unknown>) =>
-                r.destination === "STOCK" ? "Stock" : "Bin"
-              }
+              dataField="lineDestination"
+              caption="Line dest"
+              width={84}
+              calculateCellValue={(r: Record<string, unknown>) => {
+                const d = String(r.lineDestination ?? r.destination ?? "");
+                if (d === "STOCK") return "Stock";
+                if (d === "PERSONNEL_BIN") return "Bin";
+                if (d === "MIXED") return "Mixed";
+                return d || "—";
+              }}
             />
+            <Column dataField="lineBinRecipientName" caption="Bin assignee" width={120} />
             <Column dataField="sku" width={120} />
             <Column dataField="productName" caption="Product" />
             <Column dataField="quantity" dataType="number" width={88} />

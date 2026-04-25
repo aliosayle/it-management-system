@@ -59,6 +59,7 @@ type PurchaseHistoryRow = {
   purchaseId: string;
   createdAt: string;
   destination: string;
+  lineDestination?: string;
   status: string;
   supplierId: string;
   supplierName: string;
@@ -479,10 +480,14 @@ export default function ProductsPage() {
               <Column
                 dataField="destination"
                 caption="Dest"
-                width={64}
-                calculateCellValue={(row: PurchaseHistoryRow) =>
-                  row.destination === "STOCK" ? "Stock" : "Bin"
-                }
+                width={72}
+                calculateCellValue={(row: PurchaseHistoryRow) => {
+                  const d = row.lineDestination ?? row.destination;
+                  if (d === "STOCK") return "Stock";
+                  if (d === "PERSONNEL_BIN") return "Bin";
+                  if (d === "MIXED") return "Mixed";
+                  return d;
+                }}
               />
               <Column dataField="bonOriginalName" caption="Bon" width={120} />
               <Paging defaultPageSize={20} />

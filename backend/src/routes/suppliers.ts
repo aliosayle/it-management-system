@@ -66,7 +66,10 @@ router.get("/:id/purchases", async (req, res) => {
       createdBy: { select: { displayName: true } },
       lines: {
         orderBy: { lineIndex: "asc" },
-        include: { product: { select: { sku: true, name: true } } },
+        include: {
+          product: { select: { sku: true, name: true } },
+          targetPersonnel: { select: { firstName: true, lastName: true } },
+        },
       },
     },
   });
@@ -88,6 +91,10 @@ router.get("/:id/purchases", async (req, res) => {
         quantity: Number(l.quantity),
         unitPrice: Number(l.unitPrice),
         lineTotal: Number(l.quantity) * Number(l.unitPrice),
+        lineDestination: l.destination,
+        lineBinRecipientName: l.targetPersonnel
+          ? `${l.targetPersonnel.firstName} ${l.targetPersonnel.lastName}`.trim()
+          : null,
       })),
       totalAmount: p.lines.reduce(
         (sum, l) => sum + Number(l.quantity) * Number(l.unitPrice),

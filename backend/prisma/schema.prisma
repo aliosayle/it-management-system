@@ -25,6 +25,8 @@ enum MovementType {
 enum PurchaseDestination {
   STOCK
   PERSONNEL_BIN
+  /** Purchase has both stock and personal-bin lines, or multiple bin assignees. */
+  MIXED
 }
 
 enum PurchaseStatus {
@@ -81,7 +83,8 @@ model Personnel {
   canAuthorizePurchases   Boolean            @default(false)
   /** When true, this person may be chosen as buyer (acheteur) on purchases. */
   isBuyer                 Boolean            @default(false)
-  binItems                PersonnelBinItem[]
+  binItems                 PersonnelBinItem[]
+  purchaseLinesBinTarget  PurchaseLine[]     @relation("PurchaseLineBinTarget")
   purchasesAuthorized     Purchase[]         @relation("PurchaseAuthorizer")
   purchasesBinTarget      Purchase[]         @relation("PurchaseBinTarget")
   purchasesBuyer          Purchase[]         @relation("PurchaseBuyer")
@@ -166,17 +169,22 @@ model Purchase {
 }
 
 model PurchaseLine {
-  id         String   @id @default(cuid())
-  purchaseId String
-  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  productId  String
-  product    Product  @relation(fields: [productId], references: [id])
-  quantity   Decimal  @db.Decimal(14, 4)
-  unitPrice  Decimal  @db.Decimal(14, 4)
-  lineIndex  Int      @default(0)
+  id                  String               @id @default(cuid())
+  purchaseId          String
+  purchase            Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product              @relation(fields: [productId], references: [id])
+  quantity            Decimal              @db.Decimal(14, 4)
+  unitPrice           Decimal              @db.Decimal(14, 4)
+  lineIndex           Int                  @default(0)
+  /** Where this line is received when the purchase is complete (not MIXED). */
+  destination         PurchaseDestination
+  targetPersonnelId   String?
+  targetPersonnel     Personnel?           @relation("PurchaseLineBinTarget", fields: [targetPersonnelId], references: [id], onDelete: SetNull)
 
   @@index([purchaseId])
   @@index([productId])
+  @@index([targetPersonnelId])
 }
 
 /// IN/RETURN/FOUND: units received. OUT/SCRAP/LOSS: units removed. ADJUST: `quantity` is the new on-hand level.
