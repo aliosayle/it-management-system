@@ -32,8 +32,6 @@ type SupplierRow = { id: string; name: string };
 
 type PurchaseListRow = {
   id: string;
-  /** Purchase summary: STOCK, PERSONNEL_BIN, or MIXED. */
-  destination: string;
   status: string;
   supplierName: string;
   bonOriginalName: string;
@@ -41,7 +39,6 @@ type PurchaseListRow = {
   createdAt: string;
   authorizedByName: string;
   buyerName: string;
-  targetPersonnelName: string | null;
   createdByName: string;
   lineCount: number;
   totalAmount: number;
@@ -87,13 +84,6 @@ const LINE_DEST_OPTIONS: { value: LineDestination; text: string }[] = [
   { value: "STOCK", text: "Stock" },
   { value: "PERSONNEL_BIN", text: "Personal bin" },
 ];
-
-function purchaseDestLabel(d: string): string {
-  if (d === "STOCK") return "Stock";
-  if (d === "PERSONNEL_BIN") return "Bin";
-  if (d === "MIXED") return "Mixed";
-  return d;
-}
 
 function lineDestSummary(lines: LineDraft[]): {
   hasStock: boolean;
@@ -571,7 +561,7 @@ export default function PurchasesPage() {
       <div className="page-grid-body">
         <AppDataGrid
           key={gridRefresh}
-          persistenceKey="itm-grid-purchases"
+          persistenceKey="itm-grid-purchases-v4"
           dataSource={dataSource}
           repaintChangesOnly
           height="100%"
@@ -602,15 +592,8 @@ export default function PurchasesPage() {
             calculateCellValue={(row: PurchaseListRow) => statusLabel(row.status)}
           />
           <Column dataField="supplierName" caption="Supplier" width={140} />
-          <Column
-            dataField="destination"
-            caption="Dest"
-            width={76}
-            calculateCellValue={(row: PurchaseListRow) => purchaseDestLabel(row.destination)}
-          />
           <Column dataField="authorizedByName" caption="Authorized by" width={120} />
           <Column dataField="buyerName" caption="Buyer" width={120} />
-          <Column dataField="targetPersonnelName" caption="Bin recipient" width={120} />
           <Column dataField="lineCount" caption="#" width={44} dataType="number" />
           <Column
             dataField="totalAmount"
