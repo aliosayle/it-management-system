@@ -89,6 +89,16 @@ function statusLabel(s: string): string {
   return "Pending";
 }
 
+function statusHint(s: "PENDING" | "COMPLETE" | "CANCELLED"): string {
+  if (s === "PENDING") {
+    return "No warehouse or bin change until you set status to Complete.";
+  }
+  if (s === "COMPLETE") {
+    return "Inventory has been (or will be) applied for this purchase.";
+  }
+  return "";
+}
+
 export default function PurchasesPage() {
   const [popupOpen, setPopupOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -436,6 +446,15 @@ export default function PurchasesPage() {
 
   const formDisabled = isCancelled;
 
+  const linesGrandTotal = useMemo(
+    () =>
+      lines.reduce((sum, l) => sum + l.quantity * (Number.isFinite(l.unitPrice) ? l.unitPrice : 0), 0),
+    [lines],
+  );
+
+  const popupTitle = isEdit ? "Edit purchase" : "New purchase";
+  const bonChosenLabel = bonFile?.name ?? null;
+
   return (
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
@@ -537,205 +556,290 @@ export default function PurchasesPage() {
         visible={popupOpen}
         onHiding={closePopup}
         showTitle
-        title={isEdit ? "Edit purchase" : "Record purchase"}
-        width={640}
+        title={popupTitle}
+        width={820}
         height="auto"
+        maxHeight="92vh"
         showCloseButton
       >
-        <div className="dx-fieldset" style={{ paddingTop: 8 }}>
+        <div className="purchase-form">
           {isCancelled ? (
-            <div style={{ marginBottom: 8, color: "var(--base-danger, #c62828)" }}>
-              This purchase is cancelled. You can download the bon or close; changes are disabled.
+            <div className="purchase-form__alert" role="status">
+              This purchase is cancelled. You can close this window or download the receipt from the
+              grid; editing is disabled.
             </div>
           ) : null}
-          <div className="dx-field">
-            <span className="dx-field-label">Supplier</span>
-            <SelectBox
-              dataSource={supplierOptions}
-              displayExpr="label"
-              valueExpr="id"
-              value={supplierId}
-              onValueChanged={(e) => setSupplierId(e.value ?? null)}
-              searchEnabled
-              showDropDownButton
-              showClearButton
-              placeholder="Search supplier…"
-              disabled={formDisabled}
-            />
-          </div>
-          <div className="dx-field">
-            <span className="dx-field-label">Authorized by (personnel)</span>
-            <SelectBox
-              dataSource={authorizerOptions}
-              displayExpr="label"
-              valueExpr="id"
-              value={authorizerId}
-              onValueChanged={(e) => setAuthorizerId(e.value ?? null)}
-              searchEnabled
-              showDropDownButton
-              showClearButton
-              placeholder="Search authorized personnel…"
-              disabled={formDisabled}
-            />
-          </div>
-          <div className="dx-field">
-            <span className="dx-field-label">Buyer (personnel)</span>
-            <SelectBox
-              dataSource={buyerOptions}
-              displayExpr="label"
-              valueExpr="id"
-              value={buyerId}
-              onValueChanged={(e) => setBuyerId(e.value ?? null)}
-              searchEnabled
-              showDropDownButton
-              showClearButton
-              placeholder="Search buyers…"
-              disabled={formDisabled}
-            />
-          </div>
-          <div className="dx-field">
-            <span className="dx-field-label">Status</span>
-            <SelectBox
-              dataSource={STATUS_OPTIONS}
-              displayExpr="text"
-              valueExpr="value"
-              value={status}
-              onValueChanged={(e) =>
-                setStatus((e.value as "PENDING" | "COMPLETE" | "CANCELLED") ?? "PENDING")
-              }
-              searchEnabled
-              showClearButton={false}
-              disabled={formDisabled}
-            />
-          </div>
-          <div className="dx-field">
-            <span className="dx-field-label">Destination</span>
-            <SelectBox
-              dataSource={DEST_OPTIONS}
-              displayExpr="text"
-              valueExpr="value"
-              value={destination}
-              onValueChanged={(e) =>
-                setDestination((e.value as "STOCK" | "PERSONNEL_BIN" | null) ?? null)
-              }
-              searchEnabled
-              showClearButton
-              placeholder="Choose destination…"
-              disabled={isEdit || formDisabled}
-            />
-          </div>
-          {destination === "PERSONNEL_BIN" ? (
-            <div className="dx-field">
-              <span className="dx-field-label">Personal bin for</span>
-              <SelectBox
-                dataSource={targetPersonnelOptions}
-                displayExpr="label"
-                valueExpr="id"
-                value={targetPersonnelId}
-                onValueChanged={(e) => setTargetPersonnelId(e.value ?? null)}
-                searchEnabled
-                showDropDownButton
-                showClearButton
-                placeholder="Search personnel…"
-                disabled={formDisabled}
-              />
+
+          <div className="purchase-form__section-title">Supplier and workflow</div>
+          <div className="purchase-form__grid2">
+            <div className="purchase-form__field">
+              <span className="purchase-form__label">Supplier</span>
+              <div className="purchase-form__control">
+                <SelectBox
+                  dataSource={supplierOptions}
+                  displayExpr="label"
+                  valueExpr="id"
+                  value={supplierId}
+                  onValueChanged={(e) => setSupplierId(e.value ?? null)}
+                  searchEnabled
+                  showDropDownButton
+                  showClearButton
+                  placeholder="Select supplier…"
+                  disabled={formDisabled}
+                />
+              </div>
             </div>
-          ) : null}
-          <div className="dx-field">
-            <span className="dx-field-label">
-              Bon (PDF or image){isEdit ? " — optional to replace" : ""}
-            </span>
-            {isEdit && existingBonName ? (
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Current: {existingBonName}</div>
+            <div className="purchase-form__field">
+              <span className="purchase-form__label">Status</span>
+              {!isCancelled ? (
+                <p className="purchase-form__hint">{statusHint(status)}</p>
+              ) : null}
+              <div className="purchase-form__control">
+                <SelectBox
+                  dataSource={STATUS_OPTIONS}
+                  displayExpr="text"
+                  valueExpr="value"
+                  value={status}
+                  onValueChanged={(e) =>
+                    setStatus((e.value as "PENDING" | "COMPLETE" | "CANCELLED") ?? "PENDING")
+                  }
+                  searchEnabled
+                  showClearButton={false}
+                  disabled={formDisabled}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="purchase-form__section-title">People</div>
+          <div className="purchase-form__grid2">
+            <div className="purchase-form__field">
+              <span className="purchase-form__label">Authorized by</span>
+              <p className="purchase-form__hint">Person who signed off on the receipt (bon).</p>
+              <div className="purchase-form__control">
+                <SelectBox
+                  dataSource={authorizerOptions}
+                  displayExpr="label"
+                  valueExpr="id"
+                  value={authorizerId}
+                  onValueChanged={(e) => setAuthorizerId(e.value ?? null)}
+                  searchEnabled
+                  showDropDownButton
+                  showClearButton
+                  placeholder="Select authorizer…"
+                  disabled={formDisabled}
+                />
+              </div>
+            </div>
+            <div className="purchase-form__field">
+              <span className="purchase-form__label">Buyer</span>
+              <p className="purchase-form__hint">Personnel flagged as Buyer in the directory.</p>
+              <div className="purchase-form__control">
+                <SelectBox
+                  dataSource={buyerOptions}
+                  displayExpr="label"
+                  valueExpr="id"
+                  value={buyerId}
+                  onValueChanged={(e) => setBuyerId(e.value ?? null)}
+                  searchEnabled
+                  showDropDownButton
+                  showClearButton
+                  placeholder="Select buyer…"
+                  disabled={formDisabled}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="purchase-form__section-title">Receiving</div>
+          <div
+            className={
+              destination === "PERSONNEL_BIN" ? "purchase-form__grid2" : undefined
+            }
+            style={destination === "PERSONNEL_BIN" ? undefined : { maxWidth: 520 }}
+          >
+            <div className="purchase-form__field">
+              <span className="purchase-form__label">Destination</span>
+              <p className="purchase-form__hint">
+                {isEdit
+                  ? "Destination is fixed after the purchase is created."
+                  : "Warehouse stock vs. direct assignment to a personal bin."}
+              </p>
+              <div className="purchase-form__control">
+                <SelectBox
+                  dataSource={DEST_OPTIONS}
+                  displayExpr="text"
+                  valueExpr="value"
+                  value={destination}
+                  onValueChanged={(e) =>
+                    setDestination((e.value as "STOCK" | "PERSONNEL_BIN" | null) ?? null)
+                  }
+                  searchEnabled
+                  showClearButton
+                  placeholder="Select destination…"
+                  disabled={isEdit || formDisabled}
+                />
+              </div>
+            </div>
+            {destination === "PERSONNEL_BIN" ? (
+              <div className="purchase-form__field">
+                <span className="purchase-form__label">Personal bin recipient</span>
+                <p className="purchase-form__hint">Who receives the items in their bin (not warehouse stock).</p>
+                <div className="purchase-form__control">
+                  <SelectBox
+                    dataSource={targetPersonnelOptions}
+                    displayExpr="label"
+                    valueExpr="id"
+                    value={targetPersonnelId}
+                    onValueChanged={(e) => setTargetPersonnelId(e.value ?? null)}
+                    searchEnabled
+                    showDropDownButton
+                    showClearButton
+                    placeholder="Select personnel…"
+                    disabled={formDisabled}
+                  />
+                </div>
+              </div>
             ) : null}
-            <input
-              type="file"
-              accept=".pdf,image/*"
-              disabled={formDisabled}
-              onChange={(ev) => setBonFile(ev.target.files?.[0] ?? null)}
-            />
           </div>
-          <div className="dx-field">
-            <span className="dx-field-label">Notes</span>
-            <TextArea
-              value={notes}
-              onValueChanged={(e) => setNotes(e.value ?? "")}
-              height={56}
-              readOnly={formDisabled}
-            />
+
+          <div className="purchase-form__section-title">Receipt and notes</div>
+          <div className="purchase-form__field">
+            <span className="purchase-form__label">Receipt file (bon)</span>
+            <p className="purchase-form__hint">
+              {isEdit
+                ? "Upload a new file only if you need to replace the stored receipt. PDF or image."
+                : "Required. PDF or image (JPEG, PNG, WebP, GIF)."}
+            </p>
+            <div className="purchase-form__bon">
+              {isEdit && existingBonName ? (
+                <div className="purchase-form__bon-meta">
+                  <strong>On file:</strong> {existingBonName}
+                </div>
+              ) : null}
+              <div className="purchase-form__bon-actions">
+                <input
+                  type="file"
+                  className="purchase-form__bon-file"
+                  accept=".pdf,image/*"
+                  disabled={formDisabled}
+                  onChange={(ev) => setBonFile(ev.target.files?.[0] ?? null)}
+                />
+                {bonChosenLabel ? (
+                  <span className="purchase-form__bon-meta">
+                    <strong>Selected:</strong> {bonChosenLabel}
+                  </span>
+                ) : null}
+              </div>
+            </div>
           </div>
-          <div style={{ marginBottom: 6, fontWeight: 600 }}>Lines</div>
-          {lines.map((line, index) => (
-            <div
-              key={index}
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                marginBottom: 6,
-                flexWrap: "wrap",
-              }}
-            >
-              <SelectBox
-                width={260}
-                dataSource={productOptions}
-                displayExpr="label"
-                valueExpr="id"
-                value={line.productId}
-                onValueChanged={(e) => updateLine(index, { productId: e.value ?? null })}
-                searchEnabled
-                showDropDownButton
-                showClearButton
-                placeholder="Search product…"
+          <div className="purchase-form__field" style={{ marginTop: 14 }}>
+            <span className="purchase-form__label">Internal notes</span>
+            <p className="purchase-form__hint">Optional context for your team (not printed on the bon).</p>
+            <div className="purchase-form__control">
+              <TextArea
+                value={notes}
+                onValueChanged={(e) => setNotes(e.value ?? "")}
+                height={72}
+                maxLength={4000}
                 disabled={formDisabled}
               />
-              <NumberBox
-                width={100}
-                value={line.quantity}
-                min={0.0001}
-                format="#,##0.####"
-                showSpinButtons
-                readOnly={formDisabled}
-                onValueChanged={(e) =>
-                  updateLine(index, { quantity: typeof e.value === "number" ? e.value : 1 })
-                }
-              />
-              <NumberBox
-                width={100}
-                value={line.unitPrice}
-                min={0}
-                format="#,##0.00"
-                showSpinButtons
-                readOnly={formDisabled}
-                onValueChanged={(e) =>
-                  updateLine(index, {
-                    unitPrice: typeof e.value === "number" ? e.value : 0,
-                  })
-                }
-              />
-              <span style={{ fontSize: 12, minWidth: 72 }}>
-                = {(line.quantity * (line.unitPrice || 0)).toFixed(2)}
-              </span>
-              <Button
-                icon="remove"
-                stylingMode="text"
-                onClick={() => removeLine(index)}
-                disabled={formDisabled || lines.length <= 1}
-              />
             </div>
-          ))}
-          <Button
-            text="Add line"
-            icon="add"
-            stylingMode="outlined"
-            onClick={addLine}
-            disabled={formDisabled}
-          />
+          </div>
+
+          <div className="purchase-form__section-title">Line items</div>
+          <p className="purchase-form__hint" style={{ marginTop: -6, marginBottom: 10 }}>
+            Enter quantity and unit price per line. Totals use quantity × unit price.
+          </p>
+          <div className="purchase-form__lines">
+            <div className="purchase-form__lines-header" aria-hidden>
+              <span>#</span>
+              <span>Product</span>
+              <span>Qty</span>
+              <span>Unit</span>
+              <span>Total</span>
+              <span />
+            </div>
+            {lines.map((line, index) => (
+              <div className="purchase-form__line-row" key={index}>
+                <span className="purchase-form__line-num">{index + 1}</span>
+                <div className="purchase-form__control">
+                  <SelectBox
+                    dataSource={productOptions}
+                    displayExpr="label"
+                    valueExpr="id"
+                    value={line.productId}
+                    onValueChanged={(e) => updateLine(index, { productId: e.value ?? null })}
+                    searchEnabled
+                    showDropDownButton
+                    showClearButton
+                    placeholder="Product…"
+                    disabled={formDisabled}
+                  />
+                </div>
+                <div className="purchase-form__control">
+                  <NumberBox
+                    value={line.quantity}
+                    min={0.0001}
+                    format="#,##0.####"
+                    showSpinButtons
+                    disabled={formDisabled}
+                    onValueChanged={(e) =>
+                      updateLine(index, { quantity: typeof e.value === "number" ? e.value : 1 })
+                    }
+                  />
+                </div>
+                <div className="purchase-form__control">
+                  <NumberBox
+                    value={line.unitPrice}
+                    min={0}
+                    format="#,##0.00"
+                    showSpinButtons
+                    disabled={formDisabled}
+                    onValueChanged={(e) =>
+                      updateLine(index, {
+                        unitPrice: typeof e.value === "number" ? e.value : 0,
+                      })
+                    }
+                  />
+                </div>
+                <span className="purchase-form__line-total">
+                  {(line.quantity * (Number.isFinite(line.unitPrice) ? line.unitPrice : 0)).toFixed(2)}
+                </span>
+                <Button
+                  icon="trash"
+                  stylingMode="text"
+                  hint="Remove line"
+                  onClick={() => removeLine(index)}
+                  disabled={formDisabled || lines.length <= 1}
+                />
+              </div>
+            ))}
+            <div className="purchase-form__lines-footer">
+              <Button
+                text="Add line"
+                icon="add"
+                stylingMode="outlined"
+                type="default"
+                onClick={addLine}
+                disabled={formDisabled}
+              />
+              <div>
+                <span className="purchase-form__hint" style={{ margin: 0, textAlign: "right" }}>
+                  Document total
+                </span>
+                <div>
+                  <strong>{linesGrandTotal.toFixed(2)}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div style={{ padding: "10px 0 0", textAlign: "right" }}>
+
+        <div className="purchase-form__actions">
           <Button text="Cancel" stylingMode="outlined" onClick={closePopup} />
           <Button
-            text={isEdit ? "Save changes" : "Save"}
+            text={isEdit ? "Save changes" : "Save purchase"}
             type="default"
             stylingMode="contained"
             disabled={submitting || formDisabled}

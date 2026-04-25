@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, PurchaseStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { movementJson } from "../lib/movement-format.js";
@@ -98,7 +98,7 @@ router.get("/:id/purchase-history", async (req, res) => {
   const rows = await prisma.purchaseLine.findMany({
     where: {
       productId: req.params.id,
-      purchase: { status: "COMPLETE" },
+      purchase: { status: PurchaseStatus.COMPLETE },
     },
     orderBy: { purchase: { createdAt: "desc" } },
     take: 2000,
