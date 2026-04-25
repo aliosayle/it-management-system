@@ -140,6 +140,9 @@ export default function PersonnelPage() {
           <strong>Can authorize purchases</strong> {row.canAuthorizePurchases ? "Yes" : "No"}
         </div>
         <div>
+          <strong>Buyer (purchases)</strong> {row.isBuyer ? "Yes" : "No"}
+        </div>
+        <div>
           <strong>Created</strong> {formatWhen(row.createdAt)}
         </div>
         <div>
@@ -167,7 +170,9 @@ export default function PersonnelPage() {
             });
           }}
           onInitNewRow={(e) => {
-            (e.data as { canAuthorizePurchases?: boolean }).canAuthorizePurchases = false;
+            const d = e.data as { canAuthorizePurchases?: boolean; isBuyer?: boolean };
+            d.canAuthorizePurchases = false;
+            d.isBuyer = false;
             loadFormMeta().catch((err: unknown) => {
               notify(getErrorMessage(err, "Failed to load form options"), "error", 5000);
             });
@@ -234,6 +239,7 @@ export default function PersonnelPage() {
             dataType="boolean"
             visible={false}
           />
+          <Column dataField="isBuyer" caption="Buyer (purchases)" dataType="boolean" visible={false} />
           <Column
             dataField="createdAt"
             caption="Created"

@@ -28,6 +28,7 @@ const createSchema = z.object({
   userId: z
     .preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
   canAuthorizePurchases: z.boolean().optional(),
+  isBuyer: z.boolean().optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -52,6 +53,7 @@ function serializePersonnel(p: {
   phone: string | null;
   userId: string | null;
   canAuthorizePurchases: boolean;
+  isBuyer: boolean;
   createdAt: Date;
   updatedAt: Date;
   site: { name: string; company: { name: string } };
@@ -69,6 +71,7 @@ function serializePersonnel(p: {
     userEmail: p.user?.email ?? null,
     siteLabel: `${p.site.company.name} / ${p.site.name}`,
     canAuthorizePurchases: p.canAuthorizePurchases,
+    isBuyer: p.isBuyer,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };
@@ -139,7 +142,8 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { siteId, userId, canAuthorizePurchases, firstName, lastName, email, phone } = parsed.data;
+  const { siteId, userId, canAuthorizePurchases, isBuyer, firstName, lastName, email, phone } =
+    parsed.data;
   try {
     const row = await prisma.personnel.create({
       data: {
@@ -148,6 +152,7 @@ router.post("/", async (req, res) => {
         email: email ?? null,
         phone: phone ?? null,
         canAuthorizePurchases: canAuthorizePurchases ?? false,
+        isBuyer: isBuyer ?? false,
         site: { connect: { id: siteId } },
         ...(userId ? { user: { connect: { id: userId } } } : {}),
       },
@@ -430,6 +435,9 @@ router.patch("/:id", async (req, res) => {
   if (raw.canAuthorizePurchases !== undefined) {
     data.canAuthorizePurchases = raw.canAuthorizePurchases;
   }
+  if (raw.isBuyer !== undefined) {
+    data.isBuyer = raw.isBuyer;
+  }
   if (Object.keys(data).length === 0) {
     res.status(400).json({ error: "No changes" });
     return;
@@ -471,7 +479,7 @@ router.delete("/:id", async (req, res) => {
       if (e.code === "P2003") {
         res.status(409).json({
           error:
-            "Cannot delete this personnel record while it is referenced (e.g. as purchase authorizer). Reassign or remove those records first.",
+            "Cannot delete this personnel record while it is referenced (e.g. as purchase authorizer or buyer). Reassign or remove those records first.",
         });
         return;
       }

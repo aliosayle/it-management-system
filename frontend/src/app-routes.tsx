@@ -7,6 +7,7 @@ import {
   ProductsPage,
   StockPage,
   PurchasesPage,
+  SuppliersPage,
 } from "./pages";
 import { withNavigationWatcher } from "./contexts/navigation-hooks";
 
@@ -18,6 +19,7 @@ const routeData = [
   { path: "/products", element: ProductsPage },
   { path: "/stock", element: StockPage },
   { path: "/purchases", element: PurchasesPage },
+  { path: "/suppliers", element: SuppliersPage },
   { path: "/users", element: UsersPage },
 ];
 

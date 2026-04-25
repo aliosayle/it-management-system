@@ -25,6 +25,7 @@ export const navigation: NavItem[] = [
     icon: "box",
     items: [
       { text: "Products", path: "/products", icon: "product" },
+      { text: "Suppliers", path: "/suppliers", icon: "globe" },
       { text: "Stock", path: "/stock", icon: "orderedlist" },
       { text: "Purchases", path: "/purchases", icon: "cart" },
     ],

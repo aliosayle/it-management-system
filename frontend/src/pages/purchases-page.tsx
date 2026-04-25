@@ -23,20 +23,27 @@ type PersonnelRow = {
   fullName: string;
   siteLabel: string;
   canAuthorizePurchases: boolean;
+  isBuyer: boolean;
 };
 
 type ProductRow = { id: string; sku: string; name: string };
 
+type SupplierRow = { id: string; name: string };
+
 type PurchaseListRow = {
   id: string;
   destination: string;
+  status: string;
+  supplierName: string;
   bonOriginalName: string;
   notes: string | null;
   createdAt: string;
   authorizedByName: string;
+  buyerName: string;
   targetPersonnelName: string | null;
   createdByName: string;
   lineCount: number;
+  totalAmount: number;
 };
 
 type PurchaseDetailLine = {
@@ -45,50 +52,76 @@ type PurchaseDetailLine = {
   sku: string;
   productName: string;
   quantity: number;
+  unitPrice: number;
   lineIndex: number;
+  lineTotal: number;
 };
 
 type PurchaseDetail = {
   id: string;
   destination: "STOCK" | "PERSONNEL_BIN";
+  status: "PENDING" | "COMPLETE" | "CANCELLED";
+  supplier: { id: string; name: string };
   bonOriginalName: string;
   notes: string | null;
   authorizedBy: { id: string; firstName: string; lastName: string };
+  buyerPersonnel: { id: string; firstName: string; lastName: string };
   targetPersonnel: { id: string; firstName: string; lastName: string } | null;
   lines: PurchaseDetailLine[];
 };
 
-type LineDraft = { productId: string | null; quantity: number };
+type LineDraft = { productId: string | null; quantity: number; unitPrice: number };
 
 const DEST_OPTIONS = [
   { value: "STOCK", text: "Receive to stock (warehouse)" },
   { value: "PERSONNEL_BIN", text: "Direct to personal bin (no warehouse stock)" },
 ];
 
+const STATUS_OPTIONS = [
+  { value: "PENDING", text: "Pending" },
+  { value: "COMPLETE", text: "Complete" },
+  { value: "CANCELLED", text: "Cancelled" },
+];
+
+function statusLabel(s: string): string {
+  if (s === "COMPLETE") return "Complete";
+  if (s === "CANCELLED") return "Cancelled";
+  return "Pending";
+}
+
 export default function PurchasesPage() {
   const [popupOpen, setPopupOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [personnel, setPersonnel] = useState<PersonnelRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
+  const [supplierId, setSupplierId] = useState<string | null>(null);
   const [authorizerId, setAuthorizerId] = useState<string | null>(null);
+  const [buyerId, setBuyerId] = useState<string | null>(null);
+  const [status, setStatus] = useState<"PENDING" | "COMPLETE" | "CANCELLED">("PENDING");
   const [destination, setDestination] = useState<"STOCK" | "PERSONNEL_BIN" | null>(null);
   const [targetPersonnelId, setTargetPersonnelId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<LineDraft[]>([{ productId: null, quantity: 1 }]);
+  const [lines, setLines] = useState<LineDraft[]>([
+    { productId: null, quantity: 1, unitPrice: 0 },
+  ]);
   const [bonFile, setBonFile] = useState<File | null>(null);
   const [existingBonName, setExistingBonName] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [gridRefresh, setGridRefresh] = useState(0);
 
   const isEdit = editingId !== null;
+  const isCancelled = status === "CANCELLED";
 
   const loadMeta = useCallback(async () => {
-    const [pl, pr] = await Promise.all([
+    const [pl, pr, su] = await Promise.all([
       apiFetch("/api/personnel") as Promise<PersonnelRow[]>,
       apiFetch("/api/products") as Promise<ProductRow[]>,
+      apiFetch("/api/suppliers") as Promise<SupplierRow[]>,
     ]);
     setPersonnel(pl);
     setProducts(pr);
+    setSuppliers(su);
   }, []);
 
   useEffect(() => {
@@ -97,7 +130,6 @@ export default function PurchasesPage() {
     });
   }, [loadMeta]);
 
-  /** Purchase bon authorizer — only personnel flagged to authorize purchases. */
   const authorizerOptions = useMemo(() => {
     const allowed = personnel
       .filter((p) => p.canAuthorizePurchases)
@@ -120,6 +152,38 @@ export default function PurchasesPage() {
       ...allowed.filter((o) => o.id !== authorizerId),
     ];
   }, [personnel, authorizerId]);
+
+  const buyerOptions = useMemo(() => {
+    const allowed = personnel
+      .filter((p) => p.isBuyer)
+      .map((p) => ({
+        id: p.id,
+        label: `${p.fullName} — ${p.siteLabel}`,
+      }));
+    if (!buyerId) {
+      return allowed;
+    }
+    if (allowed.some((o) => o.id === buyerId)) {
+      return allowed;
+    }
+    const current = personnel.find((p) => p.id === buyerId);
+    if (!current) {
+      return allowed;
+    }
+    return [
+      { id: current.id, label: `${current.fullName} — ${current.siteLabel}` },
+      ...allowed.filter((o) => o.id !== buyerId),
+    ];
+  }, [personnel, buyerId]);
+
+  const supplierOptions = useMemo(
+    () =>
+      suppliers.map((s) => ({
+        id: s.id,
+        label: s.name,
+      })),
+    [suppliers],
+  );
 
   const targetPersonnelOptions = useMemo(
     () =>
@@ -149,11 +213,14 @@ export default function PurchasesPage() {
   );
 
   const resetForm = useCallback(() => {
+    setSupplierId(null);
     setAuthorizerId(null);
+    setBuyerId(null);
+    setStatus("PENDING");
     setDestination(null);
     setTargetPersonnelId(null);
     setNotes("");
-    setLines([{ productId: null, quantity: 1 }]);
+    setLines([{ productId: null, quantity: 1, unitPrice: 0 }]);
     setBonFile(null);
     setExistingBonName(null);
     setEditingId(null);
@@ -166,14 +233,21 @@ export default function PurchasesPage() {
 
   const applyDetailToForm = useCallback((d: PurchaseDetail) => {
     setEditingId(d.id);
+    setSupplierId(d.supplier.id);
     setAuthorizerId(d.authorizedBy.id);
+    setBuyerId(d.buyerPersonnel.id);
+    setStatus(d.status);
     setDestination(d.destination);
     setTargetPersonnelId(d.targetPersonnel?.id ?? null);
     setNotes(d.notes ?? "");
     setLines(
       d.lines.length > 0
-        ? d.lines.map((l) => ({ productId: l.productId, quantity: l.quantity }))
-        : [{ productId: null, quantity: 1 }],
+        ? d.lines.map((l) => ({
+            productId: l.productId,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+          }))
+        : [{ productId: null, quantity: 1, unitPrice: 0 }],
     );
     setBonFile(null);
     setExistingBonName(d.bonOriginalName);
@@ -200,7 +274,7 @@ export default function PurchasesPage() {
   }, []);
 
   const addLine = useCallback(() => {
-    setLines((prev) => [...prev, { productId: null, quantity: 1 }]);
+    setLines((prev) => [...prev, { productId: null, quantity: 1, unitPrice: 0 }]);
   }, []);
 
   const removeLine = useCallback((index: number) => {
@@ -212,8 +286,20 @@ export default function PurchasesPage() {
   }, []);
 
   const submitPurchase = useCallback(async () => {
+    if (isCancelled) {
+      notify("This purchase is cancelled and cannot be edited.", "warning", 3000);
+      return;
+    }
+    if (!supplierId) {
+      notify("Select a supplier", "warning", 2500);
+      return;
+    }
     if (!authorizerId) {
       notify("Select who authorized the purchase", "warning", 2500);
+      return;
+    }
+    if (!buyerId) {
+      notify("Select the buyer (personnel)", "warning", 2500);
       return;
     }
     if (!destination) {
@@ -230,7 +316,11 @@ export default function PurchasesPage() {
     }
     const payloadLines = lines
       .filter((l) => l.productId && l.quantity > 0)
-      .map((l) => ({ productId: l.productId as string, quantity: l.quantity }));
+      .map((l) => ({
+        productId: l.productId as string,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+      }));
     if (payloadLines.length === 0) {
       notify("Add at least one product line", "warning", 2500);
       return;
@@ -242,6 +332,9 @@ export default function PurchasesPage() {
         if (bonFile) {
           const fd = new FormData();
           fd.append("authorizedByPersonnelId", authorizerId);
+          fd.append("buyerPersonnelId", buyerId);
+          fd.append("supplierId", supplierId);
+          fd.append("status", status);
           fd.append("lines", JSON.stringify(payloadLines));
           fd.append("notes", notes.trim());
           if (destination === "PERSONNEL_BIN" && targetPersonnelId) {
@@ -252,6 +345,9 @@ export default function PurchasesPage() {
         } else {
           const body: Record<string, unknown> = {
             authorizedByPersonnelId: authorizerId,
+            buyerPersonnelId: buyerId,
+            supplierId,
+            status,
             notes: notes.trim() || null,
             lines: payloadLines,
           };
@@ -267,7 +363,10 @@ export default function PurchasesPage() {
       } else {
         const fd = new FormData();
         fd.append("authorizedByPersonnelId", authorizerId);
+        fd.append("buyerPersonnelId", buyerId);
+        fd.append("supplierId", supplierId);
         fd.append("destination", destination);
+        fd.append("status", status);
         if (destination === "PERSONNEL_BIN" && targetPersonnelId) {
           fd.append("targetPersonnelId", targetPersonnelId);
         }
@@ -288,7 +387,10 @@ export default function PurchasesPage() {
       setSubmitting(false);
     }
   }, [
+    supplierId,
     authorizerId,
+    buyerId,
+    status,
     destination,
     targetPersonnelId,
     notes,
@@ -298,12 +400,13 @@ export default function PurchasesPage() {
     editingId,
     closePopup,
     resetForm,
+    isCancelled,
   ]);
 
   const deletePurchase = useCallback(
     async (row: PurchaseListRow) => {
       const ok = window.confirm(
-        "Delete this purchase? Warehouse stock or personal bin quantities will be reversed.",
+        "Delete this purchase? If it was completed, warehouse stock or personal bin quantities will be reversed.",
       );
       if (!ok) return;
       try {
@@ -330,6 +433,8 @@ export default function PurchasesPage() {
       notify(getErrorMessage(e, "Download failed"), "error", 5000);
     }
   }, []);
+
+  const formDisabled = isCancelled;
 
   return (
     <div className="content-block content-block--fill">
@@ -365,16 +470,31 @@ export default function PurchasesPage() {
           <FilterRow visible />
           <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
           <Column
+            dataField="status"
+            caption="Status"
+            width={96}
+            calculateCellValue={(row: PurchaseListRow) => statusLabel(row.status)}
+          />
+          <Column dataField="supplierName" caption="Supplier" width={140} />
+          <Column
             dataField="destination"
             caption="Dest"
-            width={88}
+            width={72}
             calculateCellValue={(row: PurchaseListRow) =>
               row.destination === "STOCK" ? "Stock" : "Bin"
             }
           />
-          <Column dataField="authorizedByName" caption="Authorized by" />
-          <Column dataField="targetPersonnelName" caption="Bin recipient" />
+          <Column dataField="authorizedByName" caption="Authorized by" width={120} />
+          <Column dataField="buyerName" caption="Buyer" width={120} />
+          <Column dataField="targetPersonnelName" caption="Bin recipient" width={120} />
           <Column dataField="lineCount" caption="#" width={44} dataType="number" />
+          <Column
+            dataField="totalAmount"
+            caption="Total"
+            dataType="number"
+            format="#,##0.00"
+            width={100}
+          />
           <Column dataField="createdByName" caption="Recorded by" width={120} />
           <Column dataField="bonOriginalName" caption="Bon" width={140} />
           <Column type="buttons" width={132}>
@@ -418,11 +538,31 @@ export default function PurchasesPage() {
         onHiding={closePopup}
         showTitle
         title={isEdit ? "Edit purchase" : "Record purchase"}
-        width={560}
+        width={640}
         height="auto"
         showCloseButton
       >
         <div className="dx-fieldset" style={{ paddingTop: 8 }}>
+          {isCancelled ? (
+            <div style={{ marginBottom: 8, color: "var(--base-danger, #c62828)" }}>
+              This purchase is cancelled. You can download the bon or close; changes are disabled.
+            </div>
+          ) : null}
+          <div className="dx-field">
+            <span className="dx-field-label">Supplier</span>
+            <SelectBox
+              dataSource={supplierOptions}
+              displayExpr="label"
+              valueExpr="id"
+              value={supplierId}
+              onValueChanged={(e) => setSupplierId(e.value ?? null)}
+              searchEnabled
+              showDropDownButton
+              showClearButton
+              placeholder="Search supplier…"
+              disabled={formDisabled}
+            />
+          </div>
           <div className="dx-field">
             <span className="dx-field-label">Authorized by (personnel)</span>
             <SelectBox
@@ -435,6 +575,37 @@ export default function PurchasesPage() {
               showDropDownButton
               showClearButton
               placeholder="Search authorized personnel…"
+              disabled={formDisabled}
+            />
+          </div>
+          <div className="dx-field">
+            <span className="dx-field-label">Buyer (personnel)</span>
+            <SelectBox
+              dataSource={buyerOptions}
+              displayExpr="label"
+              valueExpr="id"
+              value={buyerId}
+              onValueChanged={(e) => setBuyerId(e.value ?? null)}
+              searchEnabled
+              showDropDownButton
+              showClearButton
+              placeholder="Search buyers…"
+              disabled={formDisabled}
+            />
+          </div>
+          <div className="dx-field">
+            <span className="dx-field-label">Status</span>
+            <SelectBox
+              dataSource={STATUS_OPTIONS}
+              displayExpr="text"
+              valueExpr="value"
+              value={status}
+              onValueChanged={(e) =>
+                setStatus((e.value as "PENDING" | "COMPLETE" | "CANCELLED") ?? "PENDING")
+              }
+              searchEnabled
+              showClearButton={false}
+              disabled={formDisabled}
             />
           </div>
           <div className="dx-field">
@@ -450,7 +621,7 @@ export default function PurchasesPage() {
               searchEnabled
               showClearButton
               placeholder="Choose destination…"
-              disabled={isEdit}
+              disabled={isEdit || formDisabled}
             />
           </div>
           {destination === "PERSONNEL_BIN" ? (
@@ -466,6 +637,7 @@ export default function PurchasesPage() {
                 showDropDownButton
                 showClearButton
                 placeholder="Search personnel…"
+                disabled={formDisabled}
               />
             </div>
           ) : null}
@@ -479,12 +651,18 @@ export default function PurchasesPage() {
             <input
               type="file"
               accept=".pdf,image/*"
+              disabled={formDisabled}
               onChange={(ev) => setBonFile(ev.target.files?.[0] ?? null)}
             />
           </div>
           <div className="dx-field">
             <span className="dx-field-label">Notes</span>
-            <TextArea value={notes} onValueChanged={(e) => setNotes(e.value ?? "")} height={56} />
+            <TextArea
+              value={notes}
+              onValueChanged={(e) => setNotes(e.value ?? "")}
+              height={56}
+              readOnly={formDisabled}
+            />
           </div>
           <div style={{ marginBottom: 6, fontWeight: 600 }}>Lines</div>
           {lines.map((line, index) => (
@@ -499,7 +677,7 @@ export default function PurchasesPage() {
               }}
             >
               <SelectBox
-                width={280}
+                width={260}
                 dataSource={productOptions}
                 displayExpr="label"
                 valueExpr="id"
@@ -509,26 +687,50 @@ export default function PurchasesPage() {
                 showDropDownButton
                 showClearButton
                 placeholder="Search product…"
+                disabled={formDisabled}
               />
               <NumberBox
-                width={120}
+                width={100}
                 value={line.quantity}
                 min={0.0001}
                 format="#,##0.####"
                 showSpinButtons
+                readOnly={formDisabled}
                 onValueChanged={(e) =>
                   updateLine(index, { quantity: typeof e.value === "number" ? e.value : 1 })
                 }
               />
+              <NumberBox
+                width={100}
+                value={line.unitPrice}
+                min={0}
+                format="#,##0.00"
+                showSpinButtons
+                readOnly={formDisabled}
+                onValueChanged={(e) =>
+                  updateLine(index, {
+                    unitPrice: typeof e.value === "number" ? e.value : 0,
+                  })
+                }
+              />
+              <span style={{ fontSize: 12, minWidth: 72 }}>
+                = {(line.quantity * (line.unitPrice || 0)).toFixed(2)}
+              </span>
               <Button
                 icon="remove"
                 stylingMode="text"
                 onClick={() => removeLine(index)}
-                disabled={lines.length <= 1}
+                disabled={formDisabled || lines.length <= 1}
               />
             </div>
           ))}
-          <Button text="Add line" icon="add" stylingMode="outlined" onClick={addLine} />
+          <Button
+            text="Add line"
+            icon="add"
+            stylingMode="outlined"
+            onClick={addLine}
+            disabled={formDisabled}
+          />
         </div>
         <div style={{ padding: "10px 0 0", textAlign: "right" }}>
           <Button text="Cancel" stylingMode="outlined" onClick={closePopup} />
@@ -536,7 +738,7 @@ export default function PurchasesPage() {
             text={isEdit ? "Save changes" : "Save"}
             type="default"
             stylingMode="contained"
-            disabled={submitting}
+            disabled={submitting || formDisabled}
             onClick={() => void submitPurchase()}
           />
         </div>

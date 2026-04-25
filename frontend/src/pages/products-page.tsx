@@ -55,6 +55,19 @@ type MovementRow = {
   user?: { displayName: string; email: string };
 };
 
+type PurchaseHistoryRow = {
+  purchaseId: string;
+  createdAt: string;
+  destination: string;
+  status: string;
+  supplierId: string;
+  supplierName: string;
+  bonOriginalName: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
 type ProductPick = {
   id: string;
   sku: string;
@@ -175,6 +188,29 @@ export default function ProductsPage() {
           `/api/products/${pid}/movements?skip=0&take=5000`,
         )) as { items: MovementRow[] };
         return { data: res.items, totalCount: res.items.length };
+      },
+    });
+  }, [statementProduct?.id]);
+
+  const purchaseHistoryStatementStore = useMemo(() => {
+    const pid = statementProduct?.id;
+    if (!pid) {
+      return new CustomStore({
+        key: "id",
+        load: () => Promise.resolve({ data: [], totalCount: 0 }),
+      });
+    }
+    return new CustomStore({
+      key: "id",
+      load: async () => {
+        const res = (await apiFetch(
+          `/api/products/${pid}/purchase-history`,
+        )) as { items: PurchaseHistoryRow[] };
+        const data = res.items.map((it, idx) => ({
+          ...it,
+          id: `${it.purchaseId}-${idx}`,
+        }));
+        return { data, totalCount: data.length };
       },
     });
   }, [statementProduct?.id]);
@@ -371,7 +407,7 @@ export default function ProductsPage() {
             display: "flex",
             flexDirection: "column",
             gap: 12,
-            height: 520,
+            height: 560,
             minHeight: 0,
           }}
         >
@@ -383,10 +419,11 @@ export default function ProductsPage() {
               description={statementProduct.description}
             />
           </div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Warehouse stock movements</div>
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <AppDataGrid
               ref={statementGridRef}
-              key={statementProduct.id}
+              key={`m-${statementProduct.id}`}
               keyExpr="id"
               className="stock-movements-grid"
               persistenceKey={`itm-product-statement-${statementProduct.id}`}
@@ -418,9 +455,43 @@ export default function ProductsPage() {
               <Pager showPageSizeSelector showInfo />
             </AppDataGrid>
           </div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>
+            Completed purchases (unit price history)
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <AppDataGrid
+              key={`p-${statementProduct.id}`}
+              keyExpr="id"
+              persistenceKey={`itm-product-purchase-history-${statementProduct.id}`}
+              dataSource={purchaseHistoryStatementStore}
+              height="100%"
+              showAddRowButton={false}
+              onDataErrorOccurred={(e) => {
+                notify(getDataGridErrorMessage(e), "error", 5000);
+              }}
+            >
+              <FilterRow visible />
+              <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
+              <Column dataField="supplierName" caption="Supplier" width={160} />
+              <Column dataField="quantity" dataType="number" width={80} />
+              <Column dataField="unitPrice" caption="Unit price" dataType="number" format="#,##0.00" />
+              <Column dataField="lineTotal" caption="Line total" dataType="number" format="#,##0.00" />
+              <Column
+                dataField="destination"
+                caption="Dest"
+                width={64}
+                calculateCellValue={(row: PurchaseHistoryRow) =>
+                  row.destination === "STOCK" ? "Stock" : "Bin"
+                }
+              />
+              <Column dataField="bonOriginalName" caption="Bon" width={120} />
+              <Paging defaultPageSize={20} />
+              <Pager showPageSizeSelector showInfo />
+            </AppDataGrid>
+          </div>
         </div>
       ) : null,
-    [statementProduct, movementsStatementStore],
+    [statementProduct, movementsStatementStore, purchaseHistoryStatementStore],
   );
 
   return (
@@ -506,7 +577,7 @@ export default function ProductsPage() {
             }}
           />
           <ColumnButton
-            hint="Stock statement (movements)"
+            hint="Product statement (movements & purchases)"
             icon="orderedlist"
             onClick={(e) => {
               if (e.row?.isNewRow) {
@@ -612,11 +683,11 @@ export default function ProductsPage() {
         showTitle
         title={
           statementProduct
-            ? `Stock statement — ${statementProduct.sku}`
-            : "Stock statement"
+            ? `Product statement — ${statementProduct.sku}`
+            : "Product statement"
         }
         width={1080}
-        height={620}
+        height={680}
         showCloseButton
         contentRender={renderStatementPopupContent}
       />

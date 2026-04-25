@@ -6,3 +6,4 @@ export { default as PersonnelPage } from "./personnel-page";
 export { default as ProductsPage } from "./products-page";
 export { default as StockPage } from "./stock-page";
 export { default as PurchasesPage } from "./purchases-page";
+export { default as SuppliersPage } from "./suppliers-page";

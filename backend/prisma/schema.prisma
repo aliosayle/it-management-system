@@ -27,6 +27,12 @@ enum PurchaseDestination {
   PERSONNEL_BIN
 }
 
+enum PurchaseStatus {
+  PENDING
+  COMPLETE
+  CANCELLED
+}
+
 model User {
   id             String          @id @default(cuid())
   email          String          @unique
@@ -73,13 +79,29 @@ model Personnel {
   user                    User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   /** When true, this person may be chosen as purchase authorizer (bon). */
   canAuthorizePurchases   Boolean            @default(false)
+  /** When true, this person may be chosen as buyer (acheteur) on purchases. */
+  isBuyer                 Boolean            @default(false)
   binItems                PersonnelBinItem[]
   purchasesAuthorized     Purchase[]         @relation("PurchaseAuthorizer")
   purchasesBinTarget      Purchase[]         @relation("PurchaseBinTarget")
+  purchasesBuyer          Purchase[]         @relation("PurchaseBuyer")
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
 
   @@index([siteId])
+}
+
+model Supplier {
+  id        String     @id @default(cuid())
+  name      String     @unique @db.VarChar(512)
+  email     String?    @db.VarChar(255)
+  phone     String?    @db.VarChar(64)
+  notes     String?    @db.Text
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  purchases Purchase[]
+
+  @@index([name])
 }
 
 model Product {
@@ -117,21 +139,29 @@ model PersonnelBinItem {
 model Purchase {
   id                      String              @id @default(cuid())
   destination             PurchaseDestination
+  status                  PurchaseStatus      @default(PENDING)
+  supplierId              String
+  supplier                Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   authorizedByPersonnelId String
   authorizedBy            Personnel           @relation("PurchaseAuthorizer", fields: [authorizedByPersonnelId], references: [id])
-  targetPersonnelId     String?
+  buyerPersonnelId        String
+  buyerPersonnel          Personnel           @relation("PurchaseBuyer", fields: [buyerPersonnelId], references: [id], onDelete: Restrict)
+  targetPersonnelId       String?
   targetPersonnel         Personnel?          @relation("PurchaseBinTarget", fields: [targetPersonnelId], references: [id], onDelete: SetNull)
   bonStoredPath           String              @db.VarChar(1024)
   bonOriginalName         String              @db.VarChar(512)
   notes                   String?             @db.Text
-  createdByUserId       String
+  createdByUserId         String
   createdBy               User                @relation(fields: [createdByUserId], references: [id])
   lines                   PurchaseLine[]
-  stockMovements        StockMovement[]
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  stockMovements          StockMovement[]
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
 
   @@index([authorizedByPersonnelId])
+  @@index([buyerPersonnelId])
+  @@index([supplierId])
+  @@index([status])
   @@index([createdAt])
 }
 
@@ -142,6 +172,7 @@ model PurchaseLine {
   productId  String
   product    Product  @relation(fields: [productId], references: [id])
   quantity   Decimal  @db.Decimal(14, 4)
+  unitPrice  Decimal  @db.Decimal(14, 4)
   lineIndex  Int      @default(0)
 
   @@index([purchaseId])

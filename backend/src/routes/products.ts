@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, PurchaseStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { movementJson } from "../lib/movement-format.js";
@@ -82,6 +82,53 @@ router.get("/:id/movements", async (req, res) => {
     total,
     skip,
     take,
+  });
+});
+
+/** Completed purchase lines for this product (unit price history / supplier trace). */
+router.get("/:id/purchase-history", async (req, res) => {
+  const product = await prisma.product.findUnique({
+    where: { id: req.params.id },
+  });
+  if (!product) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  const rows = await prisma.purchaseLine.findMany({
+    where: {
+      productId: req.params.id,
+      purchase: { status: PurchaseStatus.COMPLETE },
+    },
+    orderBy: { purchase: { createdAt: "desc" } },
+    take: 2000,
+    include: {
+      purchase: {
+        select: {
+          id: true,
+          createdAt: true,
+          destination: true,
+          status: true,
+          bonOriginalName: true,
+          supplier: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+
+  res.json({
+    items: rows.map((r) => ({
+      purchaseId: r.purchaseId,
+      createdAt: r.purchase.createdAt,
+      destination: r.purchase.destination,
+      status: r.purchase.status,
+      supplierId: r.purchase.supplier.id,
+      supplierName: r.purchase.supplier.name,
+      bonOriginalName: r.purchase.bonOriginalName,
+      quantity: Number(r.quantity),
+      unitPrice: Number(r.unitPrice),
+      lineTotal: Number(r.quantity) * Number(r.unitPrice),
+    })),
   });
 });
 
