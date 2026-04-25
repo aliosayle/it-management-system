@@ -14,6 +14,7 @@ import {
 import PopupDx from "devextreme-react/popup";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { PersonnelBinPopup, type ProductOption } from "../components/personnel-bin-popup";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 
@@ -49,10 +50,16 @@ function formatWhen(value: unknown): string {
   return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
 }
 
+type ProductRow = { id: string; sku: string; name: string };
+
 export default function PersonnelPage() {
   const [meta, setMeta] = useState<FormMeta | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [viewRow, setViewRow] = useState<Record<string, unknown> | null>(null);
+  const [binOpen, setBinOpen] = useState(false);
+  const [binPersonnelId, setBinPersonnelId] = useState<string | null>(null);
+  const [binPersonnelTitle, setBinPersonnelTitle] = useState("");
+  const [binProducts, setBinProducts] = useState<ProductOption[]>([]);
 
   const loadFormMeta = useCallback(async (personnelId?: string) => {
     const qs =
@@ -68,6 +75,24 @@ export default function PersonnelPage() {
       notify(getErrorMessage(e, "Failed to load options"), "error", 5000);
     });
   }, [loadFormMeta]);
+
+  useEffect(() => {
+    apiFetch("/api/products")
+      .then((rows) => {
+        const list = rows as ProductRow[];
+        setBinProducts(
+          list.map((p) => ({
+            id: p.id,
+            sku: p.sku,
+            name: p.name,
+            label: `${p.sku} — ${p.name}`,
+          })),
+        );
+      })
+      .catch((e: unknown) => {
+        notify(getErrorMessage(e, "Failed to load products for bin"), "error", 5000);
+      });
+  }, []);
 
   const userLookupRows = useMemo(
     () =>
@@ -105,6 +130,26 @@ export default function PersonnelPage() {
   const openView = useCallback((row: Record<string, unknown>) => {
     setViewRow(row);
     setViewOpen(true);
+  }, []);
+
+  const openPersonalBin = useCallback((row: Record<string, unknown>) => {
+    const id = String(row.id ?? "");
+    if (!id) {
+      return;
+    }
+    const title =
+      (row.fullName as string) ||
+      `${String(row.firstName ?? "")} ${String(row.lastName ?? "")}`.trim() ||
+      id;
+    setBinPersonnelId(id);
+    setBinPersonnelTitle(title);
+    setBinOpen(true);
+  }, []);
+
+  const closePersonalBin = useCallback(() => {
+    setBinOpen(false);
+    setBinPersonnelId(null);
+    setBinPersonnelTitle("");
   }, []);
 
   /** Use contentRender so markup mounts in the popup template DOM, not the portal+display:contents path that leaks into the page flex layout under the grid. */
@@ -262,7 +307,7 @@ export default function PersonnelPage() {
               editorOptions: { readOnly: true },
             }}
           />
-          <Column type="buttons" width={120}>
+          <Column type="buttons" width={168}>
             <ColumnButton name="edit" />
             <ColumnButton
               hint="View"
@@ -275,6 +320,19 @@ export default function PersonnelPage() {
                 const row = e.row?.data as Record<string, unknown> | undefined;
                 if (row) {
                   openView(row);
+                }
+              }}
+            />
+            <ColumnButton
+              hint="Personal bin — products assigned to this person"
+              icon="box"
+              onClick={(e) => {
+                if (e.row?.isNewRow) {
+                  return;
+                }
+                const row = e.row?.data as Record<string, unknown> | undefined;
+                if (row) {
+                  openPersonalBin(row);
                 }
               }}
             />
@@ -297,6 +355,14 @@ export default function PersonnelPage() {
         height="auto"
         showCloseButton
         contentRender={renderViewPopupContent}
+      />
+
+      <PersonnelBinPopup
+        visible={binOpen}
+        personnelId={binPersonnelId}
+        title={binPersonnelTitle}
+        products={binProducts}
+        onClose={closePersonalBin}
       />
     </div>
   );

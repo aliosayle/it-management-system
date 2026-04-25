@@ -99,6 +99,62 @@ function statusHint(s: "PENDING" | "COMPLETE" | "CANCELLED"): string {
   return "";
 }
 
+/** Explains what saving an edit updates (DB + inventory + derived views). */
+function buildPurchaseEditConfirmMessage(
+  destination: "STOCK" | "PERSONNEL_BIN" | null,
+  statusWhenLoaded: "PENDING" | "COMPLETE" | "CANCELLED",
+  nextStatus: "PENDING" | "COMPLETE" | "CANCELLED",
+): string {
+  const destLabel =
+    destination === "STOCK"
+      ? "Warehouse (stock)"
+      : destination === "PERSONNEL_BIN"
+        ? "Personal bin (direct to assignee)"
+        : "Unknown destination";
+
+  const lines: string[] = [
+    "Save changes to this purchase?",
+    "",
+    "The server will update:",
+    "• This purchase row (supplier, authorizer, buyer, status, notes, receipt file when replaced).",
+    "• All line items and unit prices on this purchase (unless you are cancelling a completed purchase — see below).",
+    "",
+    "When this purchase is or becomes Complete, linked inventory is kept in sync:",
+  ];
+
+  if (destination === "STOCK") {
+    lines.push(
+      "• Warehouse: StockMovement rows tied to this purchase and each product’s quantity on hand. Product stock statements and the Stock page read from those movements.",
+    );
+  } else if (destination === "PERSONNEL_BIN") {
+    lines.push(
+      "• Personal bin: PersonnelBinItem quantities for the recipient (no warehouse on-hand change for this flow).",
+    );
+  }
+
+  lines.push(
+    "",
+    "Supplier purchase history and product purchase-price history are built from this purchase and its lines, so they will reflect your updates.",
+    "",
+    `Current destination when opened: ${destLabel}.`,
+  );
+
+  if (statusWhenLoaded === "COMPLETE" && nextStatus === "CANCELLED") {
+    lines.push(
+      "",
+      "You are cancelling a completed purchase: warehouse or bin quantities from this purchase will be reversed, and line items cannot be changed in the same save.",
+    );
+  } else if (statusWhenLoaded === "PENDING" && nextStatus === "COMPLETE") {
+    lines.push(
+      "",
+      "You are completing this purchase: warehouse or bin quantities will be applied according to the destination.",
+    );
+  }
+
+  lines.push("", "Continue?");
+  return lines.join("\n");
+}
+
 export default function PurchasesPage() {
   const [popupOpen, setPopupOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -119,9 +175,17 @@ export default function PurchasesPage() {
   const [existingBonName, setExistingBonName] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [gridRefresh, setGridRefresh] = useState(0);
+  /** Status when the edit form was opened (used for cancel-complete PATCH rules). */
+  const [statusWhenLoaded, setStatusWhenLoaded] = useState<
+    "PENDING" | "COMPLETE" | "CANCELLED" | null
+  >(null);
 
   const isEdit = editingId !== null;
-  const isCancelled = status === "CANCELLED";
+  /** Record was cancelled before open; block edits. Choosing Cancelled in the form (e.g. from Complete) is allowed. */
+  const isAlreadyCancelled = isEdit && statusWhenLoaded === "CANCELLED";
+  /** Cancelling a completed purchase: API rejects lines in the same request; line edits are ignored. */
+  const lineEditsDisabledForCancelComplete =
+    isEdit && statusWhenLoaded === "COMPLETE" && status === "CANCELLED";
 
   const loadMeta = useCallback(async () => {
     const [pl, pr, su] = await Promise.all([
@@ -234,6 +298,7 @@ export default function PurchasesPage() {
     setBonFile(null);
     setExistingBonName(null);
     setEditingId(null);
+    setStatusWhenLoaded(null);
   }, []);
 
   const openCreate = useCallback(() => {
@@ -261,6 +326,7 @@ export default function PurchasesPage() {
     );
     setBonFile(null);
     setExistingBonName(d.bonOriginalName);
+    setStatusWhenLoaded(d.status);
   }, []);
 
   const openEdit = useCallback(
@@ -281,6 +347,7 @@ export default function PurchasesPage() {
     setEditingId(null);
     setExistingBonName(null);
     setBonFile(null);
+    setStatusWhenLoaded(null);
   }, []);
 
   const addLine = useCallback(() => {
@@ -296,7 +363,7 @@ export default function PurchasesPage() {
   }, []);
 
   const submitPurchase = useCallback(async () => {
-    if (isCancelled) {
+    if (isAlreadyCancelled) {
       notify("This purchase is cancelled and cannot be edited.", "warning", 3000);
       return;
     }
@@ -336,6 +403,18 @@ export default function PurchasesPage() {
       return;
     }
 
+    if (isEdit && editingId && statusWhenLoaded) {
+      const ok = window.confirm(
+        buildPurchaseEditConfirmMessage(destination, statusWhenLoaded, status),
+      );
+      if (!ok) {
+        return;
+      }
+    }
+
+    const omitLinesFromPatch =
+      Boolean(isEdit && statusWhenLoaded === "COMPLETE" && status === "CANCELLED");
+
     setSubmitting(true);
     try {
       if (isEdit && editingId) {
@@ -345,7 +424,9 @@ export default function PurchasesPage() {
           fd.append("buyerPersonnelId", buyerId);
           fd.append("supplierId", supplierId);
           fd.append("status", status);
-          fd.append("lines", JSON.stringify(payloadLines));
+          if (!omitLinesFromPatch) {
+            fd.append("lines", JSON.stringify(payloadLines));
+          }
           fd.append("notes", notes.trim());
           if (destination === "PERSONNEL_BIN" && targetPersonnelId) {
             fd.append("targetPersonnelId", targetPersonnelId);
@@ -359,8 +440,10 @@ export default function PurchasesPage() {
             supplierId,
             status,
             notes: notes.trim() || null,
-            lines: payloadLines,
           };
+          if (!omitLinesFromPatch) {
+            body.lines = payloadLines;
+          }
           if (destination === "PERSONNEL_BIN") {
             body.targetPersonnelId = targetPersonnelId;
           }
@@ -410,7 +493,8 @@ export default function PurchasesPage() {
     editingId,
     closePopup,
     resetForm,
-    isCancelled,
+    isAlreadyCancelled,
+    statusWhenLoaded,
   ]);
 
   const deletePurchase = useCallback(
@@ -444,13 +528,15 @@ export default function PurchasesPage() {
     }
   }, []);
 
-  const formDisabled = isCancelled;
+  const formDisabled = isAlreadyCancelled;
 
   const linesGrandTotal = useMemo(
     () =>
       lines.reduce((sum, l) => sum + l.quantity * (Number.isFinite(l.unitPrice) ? l.unitPrice : 0), 0),
     [lines],
   );
+
+  const linesLocked = formDisabled || lineEditsDisabledForCancelComplete;
 
   const popupTitle = isEdit ? "Edit purchase" : "New purchase";
   const bonChosenLabel = bonFile?.name ?? null;
@@ -563,7 +649,7 @@ export default function PurchasesPage() {
         showCloseButton
       >
         <div className="purchase-form">
-          {isCancelled ? (
+          {isAlreadyCancelled ? (
             <div className="purchase-form__alert" role="status">
               This purchase is cancelled. You can close this window or download the receipt from the
               grid; editing is disabled.
@@ -591,7 +677,7 @@ export default function PurchasesPage() {
             </div>
             <div className="purchase-form__field">
               <span className="purchase-form__label">Status</span>
-              {!isCancelled ? (
+              {statusHint(status) ? (
                 <p className="purchase-form__hint">{statusHint(status)}</p>
               ) : null}
               <div className="purchase-form__control">
@@ -749,7 +835,21 @@ export default function PurchasesPage() {
 
           <div className="purchase-form__section-title">Line items</div>
           <p className="purchase-form__hint" style={{ marginTop: -6, marginBottom: 10 }}>
-            Enter quantity and unit price per line. Totals use quantity × unit price.
+            {lineEditsDisabledForCancelComplete ? (
+              <>
+                Line items cannot be edited while cancelling a completed purchase in the same save. The
+                server will reverse inventory from the lines already on file.
+              </>
+            ) : isEdit ? (
+              <>
+                Changing products, quantities, or prices on a <strong>completed</strong> purchase updates
+                linked <strong>stock movements</strong> and <strong>on-hand</strong> amounts (warehouse), or{" "}
+                <strong>personal bin</strong> quantities (direct bin), so product statements, the Stock
+                page, and purchase history stay consistent.
+              </>
+            ) : (
+              <>Enter quantity and unit price per line. Totals use quantity × unit price.</>
+            )}
           </p>
           <div className="purchase-form__lines">
             <div className="purchase-form__lines-header" aria-hidden>
@@ -774,7 +874,7 @@ export default function PurchasesPage() {
                     showDropDownButton
                     showClearButton
                     placeholder="Product…"
-                    disabled={formDisabled}
+                    disabled={linesLocked}
                   />
                 </div>
                 <div className="purchase-form__control">
@@ -783,7 +883,7 @@ export default function PurchasesPage() {
                     min={0.0001}
                     format="#,##0.####"
                     showSpinButtons
-                    disabled={formDisabled}
+                    disabled={linesLocked}
                     onValueChanged={(e) =>
                       updateLine(index, { quantity: typeof e.value === "number" ? e.value : 1 })
                     }
@@ -795,7 +895,7 @@ export default function PurchasesPage() {
                     min={0}
                     format="#,##0.00"
                     showSpinButtons
-                    disabled={formDisabled}
+                    disabled={linesLocked}
                     onValueChanged={(e) =>
                       updateLine(index, {
                         unitPrice: typeof e.value === "number" ? e.value : 0,
@@ -811,7 +911,7 @@ export default function PurchasesPage() {
                   stylingMode="text"
                   hint="Remove line"
                   onClick={() => removeLine(index)}
-                  disabled={formDisabled || lines.length <= 1}
+                  disabled={linesLocked || lines.length <= 1}
                 />
               </div>
             ))}
@@ -822,7 +922,7 @@ export default function PurchasesPage() {
                 stylingMode="outlined"
                 type="default"
                 onClick={addLine}
-                disabled={formDisabled}
+                disabled={linesLocked}
               />
               <div>
                 <span className="purchase-form__hint" style={{ margin: 0, textAlign: "right" }}>
