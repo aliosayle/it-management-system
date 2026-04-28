@@ -216,3 +216,58 @@ code {
   border: 1px solid color-mix(in srgb, #c62828 28%, transparent);
   color: var(--base-text-color, #1a1a1a);
 }
+
+.purchase-form__inline-add {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.purchase-form__inline-add .purchase-form__control {
+  flex: 1;
+  min-width: 0;
+}
+
+.purchase-form__inline-add--line .dx-button {
+  margin-top: 2px;
+}
+
+.purchase-quick-add {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px 8px;
+}
+
+.purchase-quick-add__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--base-text-color, #1a1a1a) 75%, transparent);
+}
+
+.purchase-quick-add__hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--base-text-color, #1a1a1a) 60%, transparent);
+  margin: 0 0 2px;
+}
+
+.purchase-quick-add__row {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.purchase-quick-add__row .dx-selectbox {
+  flex: 1;
+  min-width: 0;
+}
+
+.purchase-quick-add__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--base-text-color, #1a1a1a) 10%, transparent);
+}

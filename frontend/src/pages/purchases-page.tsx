@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CustomStore from "devextreme/data/custom_store";
 import {
   Column,
@@ -15,6 +15,15 @@ import TextArea from "devextreme-react/text-area";
 import NumberBox from "devextreme-react/number-box";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import {
+  QuickAddCompanyPopup,
+  QuickAddPersonnelPopup,
+  QuickAddProductPopup,
+  QuickAddSitePopup,
+  QuickAddSupplierPopup,
+  type CompanyOpt,
+  type SiteOpt,
+} from "../components/purchase-quick-add-popups";
 import { apiFetch, apiFetchBlob } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 
@@ -200,6 +209,19 @@ export default function PurchasesPage() {
     "PENDING" | "COMPLETE" | "CANCELLED" | null
   >(null);
 
+  const [companies, setCompanies] = useState<CompanyOpt[]>([]);
+  const [sites, setSites] = useState<SiteOpt[]>([]);
+  const [quickSupplierOpen, setQuickSupplierOpen] = useState(false);
+  const [quickProductLineIndex, setQuickProductLineIndex] = useState<number | null>(null);
+  const [quickCompanyOpen, setQuickCompanyOpen] = useState(false);
+  const [quickSiteOpen, setQuickSiteOpen] = useState(false);
+  const [personnelAddCtx, setPersonnelAddCtx] = useState<
+    | null
+    | { role: "authorizer" | "buyer" | "bin"; lineIndex?: number }
+  >(null);
+  const personnelAddCtxRef = useRef(personnelAddCtx);
+  personnelAddCtxRef.current = personnelAddCtx;
+
   const isEdit = editingId !== null;
   /** Record was cancelled before open; block edits. Choosing Cancelled in the form (e.g. from Complete) is allowed. */
   const isAlreadyCancelled = isEdit && statusWhenLoaded === "CANCELLED";
@@ -208,14 +230,18 @@ export default function PurchasesPage() {
     isEdit && statusWhenLoaded === "COMPLETE" && status === "CANCELLED";
 
   const loadMeta = useCallback(async () => {
-    const [pl, pr, su] = await Promise.all([
+    const [pl, pr, su, co, si] = await Promise.all([
       apiFetch("/api/personnel") as Promise<PersonnelRow[]>,
       apiFetch("/api/products") as Promise<ProductRow[]>,
       apiFetch("/api/suppliers") as Promise<SupplierRow[]>,
+      apiFetch("/api/companies") as Promise<CompanyOpt[]>,
+      apiFetch("/api/sites") as Promise<Array<{ id: string; label: string }>>,
     ]);
     setPersonnel(pl);
     setProducts(pr);
     setSuppliers(su);
+    setCompanies(co);
+    setSites(si.map((s) => ({ id: s.id, label: s.label })));
   }, []);
 
   useEffect(() => {
@@ -382,6 +408,53 @@ export default function PurchasesPage() {
   const updateLine = useCallback((index: number, patch: Partial<LineDraft>) => {
     setLines((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }, []);
+
+  const quickProductLineRef = useRef<number | null>(null);
+
+  const handleSupplierCreated = useCallback(
+    async (row: { id: string; name: string }) => {
+      await loadMeta();
+      setSupplierId(row.id);
+    },
+    [loadMeta],
+  );
+
+  const handleProductCreated = useCallback(
+    async (row: ProductRow) => {
+      const idx = quickProductLineRef.current;
+      await loadMeta();
+      if (idx !== null) {
+        updateLine(idx, { productId: row.id });
+      }
+      quickProductLineRef.current = null;
+      setQuickProductLineIndex(null);
+    },
+    [loadMeta, updateLine],
+  );
+
+  const handlePersonnelCreated = useCallback(
+    async (row: PersonnelRow) => {
+      const ctx = personnelAddCtxRef.current;
+      await loadMeta();
+      if (ctx?.role === "authorizer") {
+        setAuthorizerId(row.id);
+      } else if (ctx?.role === "buyer") {
+        setBuyerId(row.id);
+      } else if (ctx?.role === "bin" && ctx.lineIndex !== undefined) {
+        updateLine(ctx.lineIndex, { targetPersonnelId: row.id });
+      }
+      setPersonnelAddCtx(null);
+    },
+    [loadMeta, updateLine],
+  );
+
+  const handleCompanyCreated = useCallback(async () => {
+    await loadMeta();
+  }, [loadMeta]);
+
+  const handleSiteCreated = useCallback(async () => {
+    await loadMeta();
+  }, [loadMeta]);
 
   const submitPurchase = useCallback(async () => {
     if (isAlreadyCancelled) {
@@ -662,18 +735,27 @@ export default function PurchasesPage() {
           <div className="purchase-form__grid2">
             <div className="purchase-form__field">
               <span className="purchase-form__label">Supplier</span>
-              <div className="purchase-form__control">
-                <SelectBox
-                  dataSource={supplierOptions}
-                  displayExpr="label"
-                  valueExpr="id"
-                  value={supplierId}
-                  onValueChanged={(e) => setSupplierId(e.value ?? null)}
-                  searchEnabled
-                  showDropDownButton
-                  showClearButton
-                  placeholder="Select supplier…"
+              <div className="purchase-form__inline-add">
+                <div className="purchase-form__control">
+                  <SelectBox
+                    dataSource={supplierOptions}
+                    displayExpr="label"
+                    valueExpr="id"
+                    value={supplierId}
+                    onValueChanged={(e) => setSupplierId(e.value ?? null)}
+                    searchEnabled
+                    showDropDownButton
+                    showClearButton
+                    placeholder="Select supplier…"
+                    disabled={formDisabled}
+                  />
+                </div>
+                <Button
+                  icon="add"
+                  stylingMode="text"
+                  hint="Add supplier"
                   disabled={formDisabled}
+                  onClick={() => setQuickSupplierOpen(true)}
                 />
               </div>
             </div>
@@ -704,36 +786,54 @@ export default function PurchasesPage() {
             <div className="purchase-form__field">
               <span className="purchase-form__label">Authorized by</span>
               <p className="purchase-form__hint">Person who signed off on the receipt (bon).</p>
-              <div className="purchase-form__control">
-                <SelectBox
-                  dataSource={authorizerOptions}
-                  displayExpr="label"
-                  valueExpr="id"
-                  value={authorizerId}
-                  onValueChanged={(e) => setAuthorizerId(e.value ?? null)}
-                  searchEnabled
-                  showDropDownButton
-                  showClearButton
-                  placeholder="Select authorizer…"
+              <div className="purchase-form__inline-add">
+                <div className="purchase-form__control">
+                  <SelectBox
+                    dataSource={authorizerOptions}
+                    displayExpr="label"
+                    valueExpr="id"
+                    value={authorizerId}
+                    onValueChanged={(e) => setAuthorizerId(e.value ?? null)}
+                    searchEnabled
+                    showDropDownButton
+                    showClearButton
+                    placeholder="Select authorizer…"
+                    disabled={formDisabled}
+                  />
+                </div>
+                <Button
+                  icon="add"
+                  stylingMode="text"
+                  hint="Add authorizer (personnel)"
                   disabled={formDisabled}
+                  onClick={() => setPersonnelAddCtx({ role: "authorizer" })}
                 />
               </div>
             </div>
             <div className="purchase-form__field">
               <span className="purchase-form__label">Buyer</span>
               <p className="purchase-form__hint">Personnel flagged as Buyer in the directory.</p>
-              <div className="purchase-form__control">
-                <SelectBox
-                  dataSource={buyerOptions}
-                  displayExpr="label"
-                  valueExpr="id"
-                  value={buyerId}
-                  onValueChanged={(e) => setBuyerId(e.value ?? null)}
-                  searchEnabled
-                  showDropDownButton
-                  showClearButton
-                  placeholder="Select buyer…"
+              <div className="purchase-form__inline-add">
+                <div className="purchase-form__control">
+                  <SelectBox
+                    dataSource={buyerOptions}
+                    displayExpr="label"
+                    valueExpr="id"
+                    value={buyerId}
+                    onValueChanged={(e) => setBuyerId(e.value ?? null)}
+                    searchEnabled
+                    showDropDownButton
+                    showClearButton
+                    placeholder="Select buyer…"
+                    disabled={formDisabled}
+                  />
+                </div>
+                <Button
+                  icon="add"
+                  stylingMode="text"
+                  hint="Add buyer (personnel)"
                   disabled={formDisabled}
+                  onClick={() => setPersonnelAddCtx({ role: "buyer" })}
                 />
               </div>
             </div>
@@ -818,18 +918,30 @@ export default function PurchasesPage() {
             {lines.map((line, index) => (
               <div className="purchase-form__line-row" key={index}>
                 <span className="purchase-form__line-num">{index + 1}</span>
-                <div className="purchase-form__control">
-                  <SelectBox
-                    dataSource={productOptions}
-                    displayExpr="label"
-                    valueExpr="id"
-                    value={line.productId}
-                    onValueChanged={(e) => updateLine(index, { productId: e.value ?? null })}
-                    searchEnabled
-                    showDropDownButton
-                    showClearButton
-                    placeholder="Product…"
+                <div className="purchase-form__inline-add purchase-form__inline-add--line">
+                  <div className="purchase-form__control">
+                    <SelectBox
+                      dataSource={productOptions}
+                      displayExpr="label"
+                      valueExpr="id"
+                      value={line.productId}
+                      onValueChanged={(e) => updateLine(index, { productId: e.value ?? null })}
+                      searchEnabled
+                      showDropDownButton
+                      showClearButton
+                      placeholder="Product…"
+                      disabled={linesLocked}
+                    />
+                  </div>
+                  <Button
+                    icon="add"
+                    stylingMode="text"
+                    hint="Add product"
                     disabled={linesLocked}
+                    onClick={() => {
+                      quickProductLineRef.current = index;
+                      setQuickProductLineIndex(index);
+                    }}
                   />
                 </div>
                 <div className="purchase-form__control">
@@ -849,20 +961,31 @@ export default function PurchasesPage() {
                     disabled={linesLocked}
                   />
                 </div>
-                <div className="purchase-form__control">
-                  <SelectBox
-                    dataSource={linePersonnelOptions}
-                    displayExpr="label"
-                    valueExpr="id"
-                    value={line.destination === "PERSONNEL_BIN" ? line.targetPersonnelId : null}
-                    onValueChanged={(e) =>
-                      updateLine(index, { targetPersonnelId: (e.value as string) ?? null })
-                    }
-                    searchEnabled
-                    showDropDownButton
-                    showClearButton
-                    placeholder={line.destination === "PERSONNEL_BIN" ? "Assignee…" : "—"}
+                <div className="purchase-form__inline-add purchase-form__inline-add--line">
+                  <div className="purchase-form__control">
+                    <SelectBox
+                      dataSource={linePersonnelOptions}
+                      displayExpr="label"
+                      valueExpr="id"
+                      value={line.destination === "PERSONNEL_BIN" ? line.targetPersonnelId : null}
+                      onValueChanged={(e) =>
+                        updateLine(index, { targetPersonnelId: (e.value as string) ?? null })
+                      }
+                      searchEnabled
+                      showDropDownButton
+                      showClearButton
+                      placeholder={line.destination === "PERSONNEL_BIN" ? "Assignee…" : "—"}
+                      disabled={linesLocked || line.destination === "STOCK"}
+                    />
+                  </div>
+                  <Button
+                    icon="add"
+                    stylingMode="text"
+                    hint="Add personnel"
                     disabled={linesLocked || line.destination === "STOCK"}
+                    onClick={() =>
+                      setPersonnelAddCtx({ role: "bin", lineIndex: index })
+                    }
                   />
                 </div>
                 <div className="purchase-form__control">
@@ -935,6 +1058,44 @@ export default function PurchasesPage() {
           />
         </div>
       </Popup>
+
+      <QuickAddSupplierPopup
+        visible={quickSupplierOpen}
+        onClose={() => setQuickSupplierOpen(false)}
+        onCreated={handleSupplierCreated}
+      />
+      <QuickAddProductPopup
+        visible={quickProductLineIndex !== null}
+        onClose={() => {
+          quickProductLineRef.current = null;
+          setQuickProductLineIndex(null);
+        }}
+        onCreated={handleProductCreated}
+      />
+      <QuickAddCompanyPopup
+        visible={quickCompanyOpen}
+        onClose={() => setQuickCompanyOpen(false)}
+        onCreated={(_row) => {
+          void handleCompanyCreated();
+        }}
+      />
+      <QuickAddSitePopup
+        visible={quickSiteOpen}
+        companyOptions={companies}
+        onClose={() => setQuickSiteOpen(false)}
+        onCreated={(_site) => {
+          void handleSiteCreated();
+        }}
+        onOpenAddCompany={() => setQuickCompanyOpen(true)}
+      />
+      <QuickAddPersonnelPopup
+        visible={personnelAddCtx !== null}
+        role={personnelAddCtx?.role ?? "bin"}
+        sites={sites}
+        onClose={() => setPersonnelAddCtx(null)}
+        onCreated={(row) => void handlePersonnelCreated(row)}
+        onOpenAddSite={() => setQuickSiteOpen(true)}
+      />
     </div>
   );
 }
