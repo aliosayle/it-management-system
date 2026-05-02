@@ -16,15 +16,12 @@
       flex: 1;
 
       .dx-treeview {
-        // ## Long text positioning
         white-space: nowrap;
-        // ##
 
         .dx-treeview-node-container:empty {
           display: none;
         }
 
-        // ## Icon width customization
         .dx-treeview-item {
           padding-left: 0;
           border-radius: 6px;
@@ -51,53 +48,18 @@
           color: var(--base-accent);
         }
 
-        // ##
-
-        // ## Arrow customization
         .dx-treeview-node {
-          padding: 0 0 !important;
+          padding: 0 !important;
+        }
+
+        .dx-treeview-item-content {
+          font-size: 14px;
+          padding: 0 $side-panel-min-width;
         }
 
         .dx-treeview-toggle-item-visibility {
-          right: 10px;
-          left: auto;
+          display: none;
         }
-
-        .dx-rtl .dx-treeview-toggle-item-visibility {
-          left: 10px;
-          right: auto;
-        }
-        // ##
-
-        // ## Item levels: section groups (L1) vs routes (L2)
-        .dx-treeview-node {
-          &[aria-level="1"] > .dx-treeview-item {
-            font-weight: 600;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--base-text-color-alpha-7);
-            padding-top: 10px;
-            padding-bottom: 4px;
-            margin: 0;
-            border-radius: 0;
-            background: transparent !important;
-          }
-
-          &[aria-level="1"] > .dx-treeview-item.dx-state-hover {
-            background: transparent !important;
-          }
-
-          &[aria-level="2"] .dx-treeview-item-content {
-            font-weight: normal;
-            font-size: 14px;
-            text-transform: none;
-            letter-spacing: normal;
-            color: inherit;
-            padding: 0 $side-panel-min-width;
-          }
-        }
-        // ##
       }
     }
   }
