@@ -12,6 +12,19 @@
     flex: 1;
     min-height: 0;
   }
+
+  /*
+   * Flat nav uses TreeView; Fluent styles every node with 14px start padding and leaf rows
+   * keep a 20px expander stub so columns line up with expandable nodes — together that reads
+   * like “level 1”. Only the first root ul’s direct rows should look like true top-level items.
+   */
+  .dx-treeview ul.dx-treeview-node-container:first-of-type > .dx-treeview-node {
+    padding-inline-start: 0;
+  }
+
+  .dx-treeview ul.dx-treeview-node-container:first-of-type > .dx-treeview-node > .dx-treeview-item > .dx-treeview-expander-icon-stub {
+    display: none;
+  }
 }
 
 .dx-drawer-overlap.pre-init-blink-fix {
