@@ -1,83 +1,16 @@
 @use "../../utils/patches";
 
-.dx-swatch-additional, .dx-swatch-additional-dark {
-  &.side-navigation-menu {
-    display: flex;
-    flex-direction: column;
-    min-height: 100%;
-    height: 100%;
-    width: 264px !important;
-    background-color: var(--base-bg);
+/* Layout shell only — TreeView uses default DevExtreme theme styles. */
+.dx-swatch-additional.side-navigation-menu,
+.dx-swatch-additional-dark.side-navigation-menu {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100%;
 
-    .menu-container {
-      min-height: 100%;
-      display: flex;
-      flex: 1;
-
-      .side-navigation-menu__list.dx-list {
-        border: none;
-        background: transparent;
-
-        .dx-list-item {
-          border: none;
-          border-radius: 6px;
-          margin: 2px 8px;
-          padding: 0;
-        }
-
-        .dx-list-item-content {
-          padding: 0;
-        }
-
-        .dx-list-item.dx-state-hover {
-          background-color: color-mix(in srgb, var(--base-text-color) 6%, transparent);
-        }
-
-        .dx-list-item.dx-list-item-selected,
-        .dx-list-item.dx-state-selected {
-          background-color: color-mix(in srgb, var(--base-accent) 16%, transparent);
-          font-weight: 600;
-
-          .side-navigation-menu__row-icon.dx-icon,
-          .dx-icon {
-            color: var(--base-accent);
-          }
-        }
-
-        .side-navigation-menu__row {
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          justify-content: flex-start;
-          gap: 10px;
-          width: 100%;
-          min-height: 36px;
-          padding: 8px 10px;
-          box-sizing: border-box;
-
-          .side-navigation-menu__row-label {
-            flex: 1 1 auto;
-            min-width: 0;
-            font-size: 14px;
-            line-height: 1.25;
-            text-align: left;
-            padding: 0;
-            white-space: normal;
-            overflow: visible;
-            word-break: normal;
-          }
-
-          .side-navigation-menu__row-icon.dx-icon {
-            flex: 0 0 auto;
-            width: 22px !important;
-            min-width: 22px;
-            margin: 0 !important;
-            margin-left: auto !important;
-            font-size: 18px;
-          }
-        }
-      }
-    }
+  .menu-container {
+    flex: 1;
+    min-height: 0;
   }
 }
 

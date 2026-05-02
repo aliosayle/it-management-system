@@ -1,8 +1,6 @@
-import React, { useCallback, useMemo, useContext } from "react";
-import List from "devextreme-react/list";
-import type { ItemClickEvent } from "devextreme/ui/list";
+import React, { useEffect, useRef, useCallback, useMemo, useContext } from "react";
+import { TreeView, type TreeViewRef } from "devextreme-react/tree-view";
 import * as events from "devextreme-react/common/core/events";
-import type { TreeViewTypes } from "devextreme-react/tree-view";
 import { navigation, type NavItem } from "../../app-navigation";
 import { useNavigation } from "../../contexts/navigation-hooks";
 import "./SideNavigationMenu.scss";
@@ -18,17 +16,8 @@ function normalizePaths(items: NavItem[]): NavItem[] {
   });
 }
 
-function NavListItem(data: NavItem) {
-  return (
-    <div className="side-navigation-menu__row">
-      <span className="side-navigation-menu__row-label">{data.text}</span>
-      {data.icon ? <i className={`side-navigation-menu__row-icon dx-icon dx-icon-${data.icon}`} /> : null}
-    </div>
-  );
-}
-
 export default function SideNavigationMenu(props: React.PropsWithChildren<SideNavigationMenuProps>) {
-  const { children, selectedItemChanged, openMenu, compactMode: _compactMode, onMenuReady } = props;
+  const { children, selectedItemChanged, openMenu, compactMode, onMenuReady } = props;
 
   const theme = useContext(ThemeContext);
 
@@ -38,7 +27,8 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
     navigationData: { currentPath },
   } = useNavigation();
 
-  const wrapperRef = React.useRef<HTMLDivElement>(null);
+  const treeViewRef = useRef<TreeViewRef>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const getWrapperRef = useCallback(
     (element: HTMLDivElement) => {
       const prevElement = wrapperRef.current;
@@ -54,16 +44,21 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
     [openMenu],
   );
 
-  const handleItemClick = useCallback(
-    (e: ItemClickEvent<NavItem, string>) => {
-      selectedItemChanged({
-        itemData: e.itemData,
-        event: e.event,
-        node: undefined,
-      } as TreeViewTypes.ItemClickEvent);
-    },
-    [selectedItemChanged],
-  );
+  useEffect(() => {
+    const treeView = treeViewRef.current?.instance();
+    if (!treeView) {
+      return;
+    }
+
+    if (currentPath !== undefined && currentPath.startsWith("/")) {
+      treeView.selectItem(currentPath);
+      treeView.expandItem(currentPath);
+    }
+
+    if (compactMode) {
+      treeView.collapseAll();
+    }
+  }, [currentPath, compactMode]);
 
   return (
     <div
@@ -71,19 +66,17 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
       ref={getWrapperRef}
     >
       {children}
-      <div className={"menu-container"}>
-        <List
-          dataSource={items}
+      <div className="menu-container">
+        <TreeView
+          ref={treeViewRef}
+          items={items}
           keyExpr="path"
-          itemRender={NavListItem}
           selectionMode="single"
-          selectByClick
           focusStateEnabled={false}
-          selectedItemKeys={currentPath?.startsWith("/") ? [currentPath] : []}
-          onItemClick={handleItemClick}
+          expandEvent="click"
+          onItemClick={selectedItemChanged}
           onContentReady={onMenuReady}
           width="100%"
-          className="side-navigation-menu__list"
         />
       </div>
     </div>
