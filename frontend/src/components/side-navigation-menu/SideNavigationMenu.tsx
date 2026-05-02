@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback, useMemo, useContext } from "react";
 import { TreeView, type TreeViewRef } from "devextreme-react/tree-view";
+import type { ItemRenderedEvent } from "devextreme/ui/tree_view";
 import * as events from "devextreme-react/common/core/events";
 import { navigation, type NavItem } from "../../app-navigation";
 import { useNavigation } from "../../contexts/navigation-hooks";
@@ -60,9 +61,16 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
     }
   }, [currentPath, compactMode]);
 
+  const onItemRendered = useCallback((e: ItemRenderedEvent<NavItem>) => {
+    const label = e.itemData?.text;
+    if (typeof label === "string" && label.length > 0) {
+      e.itemElement?.setAttribute("title", label);
+    }
+  }, []);
+
   return (
     <div
-      className={`dx-swatch-additional${theme?.isDark() ? "-dark" : ""} side-navigation-menu`}
+      className={`dx-swatch-additional${theme?.isDark() ? "-dark" : ""} side-navigation-menu${compactMode ? " side-navigation-menu--compact" : ""}`}
       ref={getWrapperRef}
     >
       {children}
@@ -76,6 +84,7 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
           expandEvent="click"
           onItemClick={selectedItemChanged}
           onContentReady={onMenuReady}
+          onItemRendered={onItemRendered}
           width="100%"
         />
       </div>

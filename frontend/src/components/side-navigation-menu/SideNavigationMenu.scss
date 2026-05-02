@@ -25,6 +25,35 @@
   .dx-treeview ul.dx-treeview-node-container:first-of-type > .dx-treeview-node > .dx-treeview-item > .dx-treeview-expander-icon-stub {
     display: none;
   }
+
+  /* Narrow drawer (compactMode): icon rail — hide labels, keep DevExtreme icons. */
+  &.side-navigation-menu--compact {
+    #navigation-header .dx-toolbar-item.header-title {
+      display: none;
+    }
+
+    .dx-treeview-item {
+      justify-content: center;
+      gap: 0;
+      padding-inline: 6px;
+    }
+
+    .dx-treeview-item-content {
+      flex: 0 0 auto;
+    }
+
+    .dx-treeview-item .dx-item-content .dx-item-url {
+      justify-content: center;
+      font-size: 0;
+      line-height: 0;
+
+      .dx-icon {
+        font-size: 20px;
+        line-height: 1;
+        margin-inline-end: 0;
+      }
+    }
+  }
 }
 
 .dx-drawer-overlap.pre-init-blink-fix {
