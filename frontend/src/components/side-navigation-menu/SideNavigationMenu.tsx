@@ -21,8 +21,8 @@ function normalizePaths(items: NavItem[]): NavItem[] {
 function NavListItem(data: NavItem) {
   return (
     <div className="side-navigation-menu__row">
-      {data.icon ? <i className={`dx-icon dx-icon-${data.icon}`} /> : null}
       <span className="side-navigation-menu__row-label">{data.text}</span>
+      {data.icon ? <i className={`side-navigation-menu__row-icon dx-icon dx-icon-${data.icon}`} /> : null}
     </div>
   );
 }
