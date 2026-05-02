@@ -218,6 +218,8 @@ export default function SuppliersPage() {
                 const d = String(r.lineDestination ?? r.destination ?? "");
                 if (d === "STOCK") return "Stock";
                 if (d === "PERSONNEL_BIN") return "Bin";
+                if (d === "SITE_BIN") return "Site";
+                if (d === "DEPARTMENT") return "Dept";
                 if (d === "MIXED") return "Mixed";
                 return d || "—";
               }}

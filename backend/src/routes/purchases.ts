@@ -22,7 +22,7 @@ function resolveBonAbsolute(storedPath: string): string {
 }
 
 /** Line-level destinations (never MIXED on a line). */
-const LINE_DESTINATIONS = ["STOCK", "PERSONNEL_BIN", "SITE_BIN"] as const;
+const LINE_DESTINATIONS = ["STOCK", "PERSONNEL_BIN", "SITE_BIN", "DEPARTMENT"] as const;
 type LineDestination = (typeof LINE_DESTINATIONS)[number];
 
 const PURCHASE_STATUSES = ["PENDING", "COMPLETE", "CANCELLED"] as const;
@@ -79,7 +79,7 @@ const lineSchema = z
     destination: z.enum(LINE_DESTINATIONS),
     targetPersonnelId: z.string().nullable().optional(),
     targetSiteId: z.string().nullable().optional(),
-    /** Optional cost center / allocation (must exist in Department). */
+    /** Required when destination is DEPARTMENT; must be null otherwise. */
     departmentId: z.string().optional().nullable(),
   })
   .superRefine((line, ctx) => {
@@ -98,6 +98,13 @@ const lineSchema = z
           path: ["targetSiteId"],
         });
       }
+      if (line.departmentId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "departmentId must be empty for PERSONNEL_BIN lines",
+          path: ["departmentId"],
+        });
+      }
     } else if (line.destination === "SITE_BIN") {
       if (!line.targetSiteId || line.targetSiteId.trim() === "") {
         ctx.addIssue({
@@ -113,6 +120,35 @@ const lineSchema = z
           path: ["targetPersonnelId"],
         });
       }
+      if (line.departmentId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "departmentId must be empty for SITE_BIN lines",
+          path: ["departmentId"],
+        });
+      }
+    } else if (line.destination === "DEPARTMENT") {
+      if (!line.departmentId || String(line.departmentId).trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "departmentId is required for DEPARTMENT lines",
+          path: ["departmentId"],
+        });
+      }
+      if (line.targetPersonnelId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "targetPersonnelId must be empty for DEPARTMENT lines",
+          path: ["targetPersonnelId"],
+        });
+      }
+      if (line.targetSiteId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "targetSiteId must be empty for DEPARTMENT lines",
+          path: ["targetSiteId"],
+        });
+      }
     } else {
       if (line.targetPersonnelId) {
         ctx.addIssue({
@@ -126,6 +162,13 @@ const lineSchema = z
           code: z.ZodIssueCode.custom,
           message: "targetSiteId must be empty for STOCK lines",
           path: ["targetSiteId"],
+        });
+      }
+      if (line.departmentId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "departmentId must be empty for STOCK lines",
+          path: ["departmentId"],
         });
       }
     }
@@ -161,12 +204,13 @@ type LineInput = {
 };
 
 function normalizedLineInput(raw: z.infer<typeof lineSchema>): LineInput {
-  const dept =
+  const trimmed =
     raw.departmentId === undefined || raw.departmentId === null
       ? null
       : String(raw.departmentId).trim() === ""
         ? null
         : String(raw.departmentId).trim();
+  const departmentId = raw.destination === "DEPARTMENT" ? trimmed : null;
   return {
     supplierId: raw.supplierId,
     productId: raw.productId,
@@ -176,7 +220,7 @@ function normalizedLineInput(raw: z.infer<typeof lineSchema>): LineInput {
     targetPersonnelId:
       raw.destination === "PERSONNEL_BIN" ? raw.targetPersonnelId ?? null : null,
     targetSiteId: raw.destination === "SITE_BIN" ? raw.targetSiteId ?? null : null,
-    departmentId: dept,
+    departmentId,
   };
 }
 
@@ -187,6 +231,7 @@ function computePurchaseSummaryFromLines(lines: LineInput[]): {
   targetSiteId: string | null;
 } {
   const stockLines = lines.filter((l) => l.destination === "STOCK");
+  const deptLines = lines.filter((l) => l.destination === "DEPARTMENT");
   const persBin = lines.filter((l) => l.destination === "PERSONNEL_BIN");
   const siteBin = lines.filter((l) => l.destination === "SITE_BIN");
 
@@ -196,6 +241,19 @@ function computePurchaseSummaryFromLines(lines: LineInput[]): {
       targetPersonnelId: null,
       targetSiteId: null,
     };
+  }
+  if (lines.length === deptLines.length) {
+    const deptIds = [
+      ...new Set(deptLines.map((l) => l.departmentId).filter((x): x is string => Boolean(x))),
+    ];
+    if (deptIds.length === 1) {
+      return {
+        destination: PurchaseDestination.DEPARTMENT,
+        targetPersonnelId: null,
+        targetSiteId: null,
+      };
+    }
+    return { destination: PurchaseDestination.MIXED, targetPersonnelId: null, targetSiteId: null };
   }
   if (lines.length === persBin.length) {
     const ids = [
@@ -519,6 +577,15 @@ function dbLinesToInventoryRows(
 ): LineInventoryRow[] {
   return lines.map((l) => {
     const qty = new Prisma.Decimal(l.quantity.toString());
+    if (l.destination === "DEPARTMENT") {
+      return {
+        productId: l.productId,
+        quantity: qty,
+        destination: "STOCK",
+        targetPersonnelId: null,
+        targetSiteId: null,
+      };
+    }
     if (l.destination === "PERSONNEL_BIN") {
       return {
         productId: l.productId,
@@ -562,7 +629,7 @@ async function replacePurchaseLinesOnly(tx: Tx, purchaseId: string, newLines: Li
         destination: l.destination,
         targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
         targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
-        departmentId: l.departmentId,
+        departmentId: l.destination === "DEPARTMENT" ? l.departmentId : null,
       },
     });
   }
@@ -597,7 +664,7 @@ async function replaceCompletedPurchaseLines(
         destination: l.destination,
         targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
         targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
-        departmentId: l.departmentId,
+        departmentId: l.destination === "DEPARTMENT" ? l.departmentId : null,
       },
     });
   }
@@ -788,7 +855,7 @@ router.post("/", (req, res, next) => {
               destination: l.destination,
               targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
               targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
-              departmentId: l.departmentId,
+              departmentId: l.destination === "DEPARTMENT" ? l.departmentId : null,
             })),
           },
         },

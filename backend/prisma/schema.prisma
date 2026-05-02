@@ -27,6 +27,8 @@ enum PurchaseDestination {
   PERSONNEL_BIN
   /** All lines go to the same site bin. */
   SITE_BIN
+  /** All lines charge to the same site department (goods received to warehouse like stock). */
+  DEPARTMENT
   /** Purchase has both stock and personal-bin lines, or multiple bin assignees. */
   MIXED
 }

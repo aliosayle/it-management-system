@@ -1,12 +1,14 @@
-import React, { useEffect, useRef, useCallback, useMemo, useContext } from 'react';
-import { TreeView, type TreeViewRef } from 'devextreme-react/tree-view';
-import * as events from 'devextreme-react/common/core/events';
-import { navigation, type NavItem } from '../../app-navigation';
-import { useNavigation } from '../../contexts/navigation-hooks';
-import './SideNavigationMenu.scss';
-import type { SideNavigationMenuProps } from '../../types';
+import React, { useCallback, useMemo, useContext } from "react";
+import List from "devextreme-react/list";
+import type { ItemClickEvent } from "devextreme/ui/list";
+import * as events from "devextreme-react/common/core/events";
+import type { TreeViewTypes } from "devextreme-react/tree-view";
+import { navigation, type NavItem } from "../../app-navigation";
+import { useNavigation } from "../../contexts/navigation-hooks";
+import "./SideNavigationMenu.scss";
+import type { SideNavigationMenuProps } from "../../types";
 
-import { ThemeContext } from '../../theme';
+import { ThemeContext } from "../../theme";
 
 function normalizePaths(items: NavItem[]): NavItem[] {
   return items.map((item) => {
@@ -16,8 +18,17 @@ function normalizePaths(items: NavItem[]): NavItem[] {
   });
 }
 
+function NavListItem(data: NavItem) {
+  return (
+    <div className="side-navigation-menu__row">
+      {data.icon ? <i className={`dx-icon dx-icon-${data.icon}`} /> : null}
+      <span className="side-navigation-menu__row-label">{data.text}</span>
+    </div>
+  );
+}
+
 export default function SideNavigationMenu(props: React.PropsWithChildren<SideNavigationMenuProps>) {
-  const { children, selectedItemChanged, openMenu, compactMode, onMenuReady } = props;
+  const { children, selectedItemChanged, openMenu, compactMode: _compactMode, onMenuReady } = props;
 
   const theme = useContext(ThemeContext);
 
@@ -27,55 +38,52 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
     navigationData: { currentPath },
   } = useNavigation();
 
-  const treeViewRef = useRef<TreeViewRef>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
   const getWrapperRef = useCallback(
     (element: HTMLDivElement) => {
       const prevElement = wrapperRef.current;
       if (prevElement) {
-        events.off(prevElement, 'dxclick');
+        events.off(prevElement, "dxclick");
       }
 
       wrapperRef.current = element;
-      events.on(element, 'dxclick', (e: React.PointerEvent) => {
+      events.on(element, "dxclick", (e: React.PointerEvent) => {
         openMenu(e);
       });
     },
     [openMenu],
   );
 
-  useEffect(() => {
-    const treeView = treeViewRef.current && treeViewRef.current.instance();
-    if (!treeView) {
-      return;
-    }
-
-    if (currentPath !== undefined && currentPath.startsWith('/')) {
-      treeView.selectItem(currentPath);
-    }
-
-    if (compactMode) {
-      treeView.collapseAll();
-    }
-  }, [currentPath, compactMode]);
+  const handleItemClick = useCallback(
+    (e: ItemClickEvent<NavItem, string>) => {
+      selectedItemChanged({
+        itemData: e.itemData,
+        event: e.event,
+        node: undefined,
+      } as TreeViewTypes.ItemClickEvent);
+    },
+    [selectedItemChanged],
+  );
 
   return (
     <div
-      className={`dx-swatch-additional${theme?.isDark() ? '-dark' : ''} side-navigation-menu`}
+      className={`dx-swatch-additional${theme?.isDark() ? "-dark" : ""} side-navigation-menu`}
       ref={getWrapperRef}
     >
       {children}
-      <div className={'menu-container'}>
-        <TreeView
-          ref={treeViewRef}
-          items={items}
-          keyExpr={'path'}
-          selectionMode={'single'}
+      <div className={"menu-container"}>
+        <List
+          dataSource={items}
+          keyExpr="path"
+          itemRender={NavListItem}
+          selectionMode="single"
+          selectByClick
           focusStateEnabled={false}
-          expandEvent={'click'}
-          onItemClick={selectedItemChanged}
+          selectedItemKeys={currentPath?.startsWith("/") ? [currentPath] : []}
+          onItemClick={handleItemClick}
           onContentReady={onMenuReady}
-          width={'100%'}
+          width="100%"
+          className="side-navigation-menu__list"
         />
       </div>
     </div>

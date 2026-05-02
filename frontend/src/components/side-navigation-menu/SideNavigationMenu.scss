@@ -15,50 +15,58 @@
       display: flex;
       flex: 1;
 
-      .dx-treeview {
-        white-space: nowrap;
+      .side-navigation-menu__list.dx-list {
+        border: none;
+        background: transparent;
 
-        .dx-treeview-node-container:empty {
-          display: none;
-        }
-
-        .dx-treeview-item {
-          padding-left: 0;
+        .dx-list-item {
+          border: none;
           border-radius: 6px;
           margin: 2px 8px;
+          padding: 0;
+        }
+
+        .dx-list-item-content {
+          padding: 0;
+        }
+
+        .dx-list-item.dx-state-hover {
+          background-color: color-mix(in srgb, var(--base-text-color) 6%, transparent);
+        }
+
+        .dx-list-item.dx-list-item-selected,
+        .dx-list-item.dx-state-selected {
+          background-color: color-mix(in srgb, var(--base-accent) 16%, transparent);
+          font-weight: 600;
+
+          .dx-icon {
+            color: var(--base-accent);
+          }
+        }
+
+        .side-navigation-menu__row {
+          display: flex;
+          align-items: center;
           flex-direction: row-reverse;
-          transition: background-color 0.15s ease;
+          gap: 0;
+          width: 100%;
+          min-height: 36px;
+          padding: 6px 8px 6px 10px;
 
           .dx-icon {
             width: $side-panel-min-width !important;
             margin: 0 !important;
+            flex-shrink: 0;
           }
-        }
 
-        .dx-treeview-item.dx-state-hover {
-          background-color: color-mix(in srgb, var(--base-text-color) 6%, transparent);
-        }
-
-        .dx-treeview-item.dx-state-selected {
-          background-color: color-mix(in srgb, var(--base-accent) 16%, transparent);
-          font-weight: 600;
-        }
-
-        .dx-treeview-item.dx-state-selected .dx-icon {
-          color: var(--base-accent);
-        }
-
-        .dx-treeview-node {
-          padding: 0 !important;
-        }
-
-        .dx-treeview-item-content {
-          font-size: 14px;
-          padding: 0 $side-panel-min-width;
-        }
-
-        .dx-treeview-toggle-item-visibility {
-          display: none;
+          .side-navigation-menu__row-label {
+            flex: 1;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 0 $side-panel-min-width;
+          }
         }
       }
     }

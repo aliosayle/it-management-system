@@ -126,7 +126,7 @@ code {
 .purchase-form__lines-header {
   display: grid;
   grid-template-columns:
-    28px minmax(96px, 0.85fr) minmax(88px, 0.75fr) minmax(0, 1.05fr) minmax(84px, 96px) minmax(88px, 0.95fr) 72px 72px 64px 40px;
+    28px minmax(96px, 0.85fr) minmax(0, 1.15fr) minmax(96px, 110px) minmax(96px, 1fr) 72px 72px 64px 40px;
   gap: 8px;
   align-items: center;
   padding: 10px 12px;
@@ -142,7 +142,7 @@ code {
 .purchase-form__line-row {
   display: grid;
   grid-template-columns:
-    28px minmax(96px, 0.85fr) minmax(88px, 0.75fr) minmax(0, 1.05fr) minmax(84px, 96px) minmax(88px, 0.95fr) 72px 72px 64px 40px;
+    28px minmax(96px, 0.85fr) minmax(0, 1.15fr) minmax(96px, 110px) minmax(96px, 1fr) 72px 72px 64px 40px;
   gap: 8px;
   align-items: center;
   padding: 10px 12px;
