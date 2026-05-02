@@ -112,6 +112,17 @@ code {
   background: color-mix(in srgb, var(--base-bg, #fff) 96%, var(--base-text-color, #1a1a1a) 4%);
 }
 
+.purchase-form__assignee-site-cell {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.purchase-form__muted-dash {
+  color: color-mix(in srgb, var(--base-text-color, #1a1a1a) 38%, transparent);
+  padding: 0 4px;
+}
+
 .purchase-form__lines-header {
   display: grid;
   grid-template-columns:

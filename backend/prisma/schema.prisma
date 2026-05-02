@@ -25,6 +25,8 @@ enum MovementType {
 enum PurchaseDestination {
   STOCK
   PERSONNEL_BIN
+  /** All lines go to the same site bin. */
+  SITE_BIN
   /** Purchase has both stock and personal-bin lines, or multiple bin assignees. */
   MIXED
 }
@@ -33,6 +35,11 @@ enum PurchaseStatus {
   PENDING
   COMPLETE
   CANCELLED
+}
+
+enum BinKind {
+  PERSONNEL
+  SITE
 }
 
 model User {
@@ -57,13 +64,16 @@ model Company {
 }
 
 model Site {
-  id        String      @id @default(cuid())
-  companyId String
-  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name      String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  personnel Personnel[]
+  id                     String         @id @default(cuid())
+  companyId              String
+  company                Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name                   String
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  personnel              Personnel[]
+  siteBinItems           SiteBinItem[]
+  purchaseHeaderTargets  Purchase[]     @relation("PurchaseSiteBinSummary")
+  purchaseLinesBinTarget PurchaseLine[] @relation("PurchaseLineSiteBinTarget")
 
   @@index([companyId])
 }
@@ -119,6 +129,7 @@ model Product {
   updatedAt          DateTime           @updatedAt
   stockMovements     StockMovement[]
   personnelBinItems  PersonnelBinItem[]
+  siteBinItems       SiteBinItem[]
   purchaseLines      PurchaseLine[]
 }
 
@@ -131,11 +142,30 @@ model PersonnelBinItem {
   product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   quantity    Decimal   @default(1) @db.Decimal(14, 4)
   note        String?   @db.Text
+  kind        BinKind   @default(PERSONNEL)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@unique([personnelId, productId])
   @@index([personnelId])
+  @@index([productId])
+}
+
+/// Site-level bin (same semantics as personnel bin for purchases; not warehouse stock).
+model SiteBinItem {
+  id        String   @id @default(cuid())
+  siteId    String
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Decimal  @default(1) @db.Decimal(14, 4)
+  note      String?  @db.Text
+  kind      BinKind  @default(SITE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([siteId, productId])
+  @@index([siteId])
   @@index([productId])
 }
 
@@ -151,6 +181,8 @@ model Purchase {
   buyerPersonnel          Personnel           @relation("PurchaseBuyer", fields: [buyerPersonnelId], references: [id], onDelete: Restrict)
   targetPersonnelId       String?
   targetPersonnel         Personnel?          @relation("PurchaseBinTarget", fields: [targetPersonnelId], references: [id], onDelete: SetNull)
+  targetSiteId            String?
+  targetSite              Site?               @relation("PurchaseSiteBinSummary", fields: [targetSiteId], references: [id], onDelete: SetNull)
   bonStoredPath           String              @db.VarChar(1024)
   bonOriginalName         String              @db.VarChar(512)
   notes                   String?             @db.Text
@@ -178,13 +210,16 @@ model PurchaseLine {
   unitPrice           Decimal              @db.Decimal(14, 4)
   lineIndex           Int                  @default(0)
   /** Where this line is received when the purchase is complete (not MIXED). */
-  destination         PurchaseDestination
-  targetPersonnelId   String?
-  targetPersonnel     Personnel?           @relation("PurchaseLineBinTarget", fields: [targetPersonnelId], references: [id], onDelete: SetNull)
+  destination       PurchaseDestination
+  targetPersonnelId String?
+  targetPersonnel   Personnel?          @relation("PurchaseLineBinTarget", fields: [targetPersonnelId], references: [id], onDelete: SetNull)
+  targetSiteId      String?
+  targetSite        Site?               @relation("PurchaseLineSiteBinTarget", fields: [targetSiteId], references: [id], onDelete: SetNull)
 
   @@index([purchaseId])
   @@index([productId])
   @@index([targetPersonnelId])
+  @@index([targetSiteId])
 }
 
 /// IN/RETURN/FOUND: units received. OUT/SCRAP/LOSS: units removed. ADJUST: `quantity` is the new on-hand level.

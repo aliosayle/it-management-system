@@ -83,6 +83,7 @@ function binItemJson(i: {
   productId: string;
   quantity: Prisma.Decimal;
   note: string | null;
+  kind: "PERSONNEL" | "SITE";
   createdAt: Date;
   updatedAt: Date;
   product: { sku: string; name: string };
@@ -95,6 +96,8 @@ function binItemJson(i: {
     productName: i.product.name,
     quantity: Number(i.quantity),
     note: i.note,
+    kind: i.kind,
+    typeLabel: i.kind === "PERSONNEL" ? "Person" : "Site",
     createdAt: i.createdAt,
     updatedAt: i.updatedAt,
   };

@@ -11,6 +11,10 @@ import {
   addToPersonnelBinWithoutStock,
   subtractFromPersonnelBinWithoutStock,
 } from "../lib/personnel-bin-direct.js";
+import {
+  addToSiteBinWithoutStock,
+  subtractFromSiteBinWithoutStock,
+} from "../lib/site-bin-direct.js";
 import { requireAuth } from "../middleware/auth.js";
 
 function resolveBonAbsolute(storedPath: string): string {
@@ -18,7 +22,7 @@ function resolveBonAbsolute(storedPath: string): string {
 }
 
 /** Line-level destinations (never MIXED on a line). */
-const LINE_DESTINATIONS = ["STOCK", "PERSONNEL_BIN"] as const;
+const LINE_DESTINATIONS = ["STOCK", "PERSONNEL_BIN", "SITE_BIN"] as const;
 type LineDestination = (typeof LINE_DESTINATIONS)[number];
 
 const PURCHASE_STATUSES = ["PENDING", "COMPLETE", "CANCELLED"] as const;
@@ -73,6 +77,7 @@ const lineSchema = z
     unitPrice: z.number().nonnegative(),
     destination: z.enum(LINE_DESTINATIONS),
     targetPersonnelId: z.string().nullable().optional(),
+    targetSiteId: z.string().nullable().optional(),
   })
   .superRefine((line, ctx) => {
     if (line.destination === "PERSONNEL_BIN") {
@@ -83,12 +88,43 @@ const lineSchema = z
           path: ["targetPersonnelId"],
         });
       }
-    } else if (line.targetPersonnelId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "targetPersonnelId must be empty for STOCK lines",
-        path: ["targetPersonnelId"],
-      });
+      if (line.targetSiteId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "targetSiteId must be empty for PERSONNEL_BIN lines",
+          path: ["targetSiteId"],
+        });
+      }
+    } else if (line.destination === "SITE_BIN") {
+      if (!line.targetSiteId || line.targetSiteId.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "targetSiteId is required for SITE_BIN lines",
+          path: ["targetSiteId"],
+        });
+      }
+      if (line.targetPersonnelId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "targetPersonnelId must be empty for SITE_BIN lines",
+          path: ["targetPersonnelId"],
+        });
+      }
+    } else {
+      if (line.targetPersonnelId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "targetPersonnelId must be empty for STOCK lines",
+          path: ["targetPersonnelId"],
+        });
+      }
+      if (line.targetSiteId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "targetSiteId must be empty for STOCK lines",
+          path: ["targetSiteId"],
+        });
+      }
     }
   });
 
@@ -118,6 +154,7 @@ type LineInput = {
   unitPrice: number;
   destination: LineDestination;
   targetPersonnelId: string | null;
+  targetSiteId: string | null;
 };
 
 function normalizedLineInput(raw: z.infer<typeof lineSchema>): LineInput {
@@ -126,29 +163,56 @@ function normalizedLineInput(raw: z.infer<typeof lineSchema>): LineInput {
     quantity: raw.quantity,
     unitPrice: raw.unitPrice,
     destination: raw.destination,
-    targetPersonnelId: raw.destination === "STOCK" ? null : raw.targetPersonnelId ?? null,
+    targetPersonnelId:
+      raw.destination === "PERSONNEL_BIN" ? raw.targetPersonnelId ?? null : null,
+    targetSiteId: raw.destination === "SITE_BIN" ? raw.targetSiteId ?? null : null,
   };
 }
 
 /** Purchase header summary derived from line destinations. */
-function computePurchaseSummaryFromLines(
-  lines: { destination: LineDestination; targetPersonnelId: string | null }[],
-): { destination: PurchaseDestination; targetPersonnelId: string | null } {
-  const binLines = lines.filter((l) => l.destination === "PERSONNEL_BIN");
-  const stockCount = lines.length - binLines.length;
-  if (binLines.length === lines.length) {
+function computePurchaseSummaryFromLines(lines: LineInput[]): {
+  destination: PurchaseDestination;
+  targetPersonnelId: string | null;
+  targetSiteId: string | null;
+} {
+  const stockLines = lines.filter((l) => l.destination === "STOCK");
+  const persBin = lines.filter((l) => l.destination === "PERSONNEL_BIN");
+  const siteBin = lines.filter((l) => l.destination === "SITE_BIN");
+
+  if (lines.length === stockLines.length) {
+    return {
+      destination: PurchaseDestination.STOCK,
+      targetPersonnelId: null,
+      targetSiteId: null,
+    };
+  }
+  if (lines.length === persBin.length) {
     const ids = [
-      ...new Set(binLines.map((l) => l.targetPersonnelId).filter((x): x is string => Boolean(x))),
+      ...new Set(persBin.map((l) => l.targetPersonnelId).filter((x): x is string => Boolean(x))),
     ];
     if (ids.length === 1) {
-      return { destination: PurchaseDestination.PERSONNEL_BIN, targetPersonnelId: ids[0]! };
+      return {
+        destination: PurchaseDestination.PERSONNEL_BIN,
+        targetPersonnelId: ids[0]!,
+        targetSiteId: null,
+      };
     }
-    return { destination: PurchaseDestination.MIXED, targetPersonnelId: null };
+    return { destination: PurchaseDestination.MIXED, targetPersonnelId: null, targetSiteId: null };
   }
-  if (stockCount === lines.length) {
-    return { destination: PurchaseDestination.STOCK, targetPersonnelId: null };
+  if (lines.length === siteBin.length) {
+    const ids = [
+      ...new Set(siteBin.map((l) => l.targetSiteId).filter((x): x is string => Boolean(x))),
+    ];
+    if (ids.length === 1) {
+      return {
+        destination: PurchaseDestination.SITE_BIN,
+        targetPersonnelId: null,
+        targetSiteId: ids[0]!,
+      };
+    }
+    return { destination: PurchaseDestination.MIXED, targetPersonnelId: null, targetSiteId: null };
   }
-  return { destination: PurchaseDestination.MIXED, targetPersonnelId: null };
+  return { destination: PurchaseDestination.MIXED, targetPersonnelId: null, targetSiteId: null };
 }
 
 type LineInventoryRow = {
@@ -156,6 +220,7 @@ type LineInventoryRow = {
   quantity: Prisma.Decimal;
   destination: LineDestination;
   targetPersonnelId: string | null;
+  targetSiteId: string | null;
 };
 
 function purchaseListItem(p: {
@@ -169,6 +234,7 @@ function purchaseListItem(p: {
   authorizedBy: { firstName: string; lastName: string };
   buyerPersonnel: { firstName: string; lastName: string };
   targetPersonnel: { firstName: string; lastName: string } | null;
+  targetSite: { name: string; company: { name: string } } | null;
   createdBy: { displayName: string; email: string };
   _count: { lines: number };
   lines: { quantity: Prisma.Decimal; unitPrice: Prisma.Decimal }[];
@@ -177,6 +243,18 @@ function purchaseListItem(p: {
     (sum, l) => sum + Number(l.quantity) * Number(l.unitPrice),
     0,
   );
+  const targetPersonnelName =
+    p.destination === "MIXED"
+      ? "Various"
+      : p.targetPersonnel
+        ? `${p.targetPersonnel.firstName} ${p.targetPersonnel.lastName}`.trim()
+        : null;
+  const targetSiteName =
+    p.destination === "MIXED"
+      ? "Various"
+      : p.targetSite
+        ? `${p.targetSite.company.name} / ${p.targetSite.name}`.trim()
+        : null;
   return {
     id: p.id,
     destination: p.destination,
@@ -188,11 +266,8 @@ function purchaseListItem(p: {
     authorizedByName: `${p.authorizedBy.firstName} ${p.authorizedBy.lastName}`.trim(),
     buyerName: `${p.buyerPersonnel.firstName} ${p.buyerPersonnel.lastName}`.trim(),
     targetPersonnelName:
-      p.destination === "MIXED"
-        ? "Various"
-        : p.targetPersonnel
-          ? `${p.targetPersonnel.firstName} ${p.targetPersonnel.lastName}`.trim()
-          : null,
+      p.destination === "SITE_BIN" ? null : targetPersonnelName,
+    targetSiteName: p.destination === "PERSONNEL_BIN" ? null : targetSiteName,
     createdByName: p.createdBy.displayName,
     lineCount: p._count.lines,
     totalAmount,
@@ -208,6 +283,7 @@ router.get("/", async (_req, res) => {
       authorizedBy: { select: { firstName: true, lastName: true } },
       buyerPersonnel: { select: { firstName: true, lastName: true } },
       targetPersonnel: { select: { firstName: true, lastName: true } },
+      targetSite: { include: { company: { select: { name: true } } } },
       createdBy: { select: { displayName: true, email: true } },
       _count: { select: { lines: true } },
       lines: { select: { quantity: true, unitPrice: true } },
@@ -245,12 +321,14 @@ router.get("/:id", async (req, res) => {
       authorizedBy: { select: { firstName: true, lastName: true, id: true } },
       buyerPersonnel: { select: { firstName: true, lastName: true, id: true } },
       targetPersonnel: { select: { firstName: true, lastName: true, id: true } },
+      targetSite: { include: { company: { select: { name: true, id: true } } } },
       createdBy: { select: { displayName: true, email: true, id: true } },
       lines: {
         orderBy: { lineIndex: "asc" },
         include: {
           product: { select: { id: true, sku: true, name: true } },
           targetPersonnel: { select: { id: true, firstName: true, lastName: true } },
+          targetSite: { include: { company: { select: { name: true } } } },
         },
       },
     },
@@ -270,6 +348,7 @@ router.get("/:id", async (req, res) => {
     authorizedBy: row.authorizedBy,
     buyerPersonnel: row.buyerPersonnel,
     targetPersonnel: row.targetPersonnel,
+    targetSite: row.targetSite,
     createdBy: row.createdBy,
     lines: row.lines.map((l) => ({
       id: l.id,
@@ -282,6 +361,12 @@ router.get("/:id", async (req, res) => {
       lineTotal: Number(l.quantity) * Number(l.unitPrice),
       destination: l.destination,
       targetPersonnel: l.targetPersonnel,
+      targetSite: l.targetSite
+        ? {
+            id: l.targetSite.id,
+            label: `${l.targetSite.company.name} / ${l.targetSite.name}`,
+          }
+        : null,
     })),
   });
 });
@@ -308,7 +393,7 @@ async function applyCompletedPurchaseInventory(
         note: noteBase,
         purchaseId,
       });
-    } else {
+    } else if (line.destination === "PERSONNEL_BIN") {
       const targetId = line.targetPersonnelId;
       if (!targetId) {
         throw Object.assign(new Error("Bin line missing target personnel"), {
@@ -317,6 +402,19 @@ async function applyCompletedPurchaseInventory(
       }
       await addToPersonnelBinWithoutStock(tx, {
         personnelId: targetId,
+        productId: line.productId,
+        addQty: line.quantity,
+        noteLine: noteBase,
+      });
+    } else {
+      const siteId = line.targetSiteId;
+      if (!siteId) {
+        throw Object.assign(new Error("Site bin line missing target site"), {
+          code: "BIN_LINE_NO_TARGET",
+        });
+      }
+      await addToSiteBinWithoutStock(tx, {
+        siteId,
         productId: line.productId,
         addQty: line.quantity,
         noteLine: noteBase,
@@ -359,6 +457,16 @@ async function reverseCompletedPurchaseInventory(
         productId: line.productId,
         subQty: new Prisma.Decimal(line.quantity.toString()),
       });
+    } else if (line.destination === "SITE_BIN") {
+      const siteId = line.targetSiteId;
+      if (!siteId) {
+        throw new Error("Purchase site bin line missing target site for reversal");
+      }
+      await subtractFromSiteBinWithoutStock(tx, {
+        siteId,
+        productId: line.productId,
+        subQty: new Prisma.Decimal(line.quantity.toString()),
+      });
     }
   }
 }
@@ -369,14 +477,37 @@ function dbLinesToInventoryRows(
     quantity: Prisma.Decimal;
     destination: PurchaseDestination;
     targetPersonnelId: string | null;
+    targetSiteId: string | null;
   }>,
 ): LineInventoryRow[] {
-  return lines.map((l) => ({
-    productId: l.productId,
-    quantity: new Prisma.Decimal(l.quantity.toString()),
-    destination: (l.destination === "PERSONNEL_BIN" ? "PERSONNEL_BIN" : "STOCK") as LineDestination,
-    targetPersonnelId: l.targetPersonnelId,
-  }));
+  return lines.map((l) => {
+    const qty = new Prisma.Decimal(l.quantity.toString());
+    if (l.destination === "PERSONNEL_BIN") {
+      return {
+        productId: l.productId,
+        quantity: qty,
+        destination: "PERSONNEL_BIN",
+        targetPersonnelId: l.targetPersonnelId,
+        targetSiteId: null,
+      };
+    }
+    if (l.destination === "SITE_BIN") {
+      return {
+        productId: l.productId,
+        quantity: qty,
+        destination: "SITE_BIN",
+        targetPersonnelId: null,
+        targetSiteId: l.targetSiteId,
+      };
+    }
+    return {
+      productId: l.productId,
+      quantity: qty,
+      destination: "STOCK",
+      targetPersonnelId: null,
+      targetSiteId: null,
+    };
+  });
 }
 
 async function replacePurchaseLinesOnly(tx: Tx, purchaseId: string, newLines: LineInput[]) {
@@ -391,7 +522,8 @@ async function replacePurchaseLinesOnly(tx: Tx, purchaseId: string, newLines: Li
         unitPrice: new Prisma.Decimal(l.unitPrice),
         lineIndex: i,
         destination: l.destination,
-        targetPersonnelId: l.destination === "STOCK" ? null : l.targetPersonnelId,
+        targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
+        targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
       },
     });
   }
@@ -423,7 +555,8 @@ async function replaceCompletedPurchaseLines(
         unitPrice: new Prisma.Decimal(l.unitPrice),
         lineIndex: i,
         destination: l.destination,
-        targetPersonnelId: l.destination === "STOCK" ? null : l.targetPersonnelId,
+        targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
+        targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
       },
     });
   }
@@ -553,6 +686,18 @@ router.post("/", (req, res, next) => {
     }
   }
 
+  const siteTargetIds = [
+    ...new Set(lineInputs.filter((l) => l.destination === "SITE_BIN").map((l) => l.targetSiteId!)),
+  ];
+  for (const sid of siteTargetIds) {
+    const site = await prisma.site.findUnique({ where: { id: sid } });
+    if (!site) {
+      fs.unlink(file.path, () => {});
+      res.status(400).json({ error: `Target site not found: ${sid}` });
+      return;
+    }
+  }
+
   const productIds = [...new Set(lineInputs.map((l) => l.productId))];
   const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
   if (products.length !== productIds.length) {
@@ -577,6 +722,7 @@ router.post("/", (req, res, next) => {
           buyerPersonnelId: data.buyerPersonnelId,
           authorizedByPersonnelId: data.authorizedByPersonnelId,
           targetPersonnelId: summary.targetPersonnelId,
+          targetSiteId: summary.targetSiteId,
           bonStoredPath: storedPath,
           bonOriginalName: file.originalname.slice(0, 500),
           notes: purchaseNote,
@@ -588,7 +734,8 @@ router.post("/", (req, res, next) => {
               unitPrice: new Prisma.Decimal(l.unitPrice),
               lineIndex: i,
               destination: l.destination,
-              targetPersonnelId: l.destination === "STOCK" ? null : l.targetPersonnelId,
+              targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
+              targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
             })),
           },
         },
@@ -801,6 +948,19 @@ router.patch("/:id", (req, res, next) => {
         return;
       }
     }
+    const siteTargetIds = [
+      ...new Set(
+        normalizedPatchLines.filter((l) => l.destination === "SITE_BIN").map((l) => l.targetSiteId!),
+      ),
+    ];
+    for (const sid of siteTargetIds) {
+      const s = await prisma.site.findUnique({ where: { id: sid } });
+      if (!s) {
+        if (hasFile && req.file) fs.unlink(req.file.path, () => {});
+        res.status(400).json({ error: "Target site not found for a site bin line" });
+        return;
+      }
+    }
   }
 
   const nextNotes =
@@ -849,6 +1009,7 @@ router.patch("/:id", (req, res, next) => {
             data: {
               destination: summary.destination,
               targetPersonnelId: summary.targetPersonnelId,
+              targetSiteId: summary.targetSiteId,
             },
           });
         } else if (existing.status === PurchaseStatus.PENDING) {
@@ -859,6 +1020,7 @@ router.patch("/:id", (req, res, next) => {
             data: {
               destination: summary.destination,
               targetPersonnelId: summary.targetPersonnelId,
+              targetSiteId: summary.targetSiteId,
             },
           });
         }

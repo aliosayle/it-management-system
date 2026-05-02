@@ -19,31 +19,23 @@ export type ProductOption = { id: string; sku: string; name: string; label: stri
 
 type Props = {
   visible: boolean;
-  personnelId: string | null;
+  siteId: string | null;
   title: string;
   products: ProductOption[];
   onClose: () => void;
 };
 
-export function PersonnelBinPopup({
-  visible,
-  personnelId,
-  title,
-  products,
-  onClose,
-}: Props) {
+export function SiteBinPopup({ visible, siteId, title, products, onClose }: Props) {
   const dataSource = useMemo(() => {
-    if (!personnelId) {
+    if (!siteId) {
       return new CustomStore({ key: "id", load: () => Promise.resolve([]) });
     }
     return new CustomStore({
       key: "id",
       load: () =>
-        apiFetch(`/api/personnel/${personnelId}/bin/items`) as Promise<
-          Record<string, unknown>[]
-        >,
+        apiFetch(`/api/sites/${siteId}/bin/items`) as Promise<Record<string, unknown>[]>,
       insert: (values) =>
-        apiFetch(`/api/personnel/${personnelId}/bin/items`, {
+        apiFetch(`/api/sites/${siteId}/bin/items`, {
           method: "POST",
           body: JSON.stringify({
             productId: (values as { productId: string }).productId,
@@ -53,7 +45,7 @@ export function PersonnelBinPopup({
         }) as Promise<Record<string, unknown>>,
       update: (key, values) => {
         const payload = values as { quantity?: number; note?: string | null };
-        return apiFetch(`/api/personnel/${personnelId}/bin/items/${key}`, {
+        return apiFetch(`/api/sites/${siteId}/bin/items/${key}`, {
           method: "PATCH",
           body: JSON.stringify({
             quantity: payload.quantity,
@@ -62,27 +54,27 @@ export function PersonnelBinPopup({
         }) as Promise<Record<string, unknown>>;
       },
       remove: (key) =>
-        apiFetch(`/api/personnel/${personnelId}/bin/items/${key}`, {
+        apiFetch(`/api/sites/${siteId}/bin/items/${key}`, {
           method: "DELETE",
         }) as Promise<void>,
     });
-  }, [personnelId]);
+  }, [siteId]);
 
   return (
     <PopupDx
       visible={visible}
       onHiding={onClose}
       showTitle
-      title={`Personal bin — ${title}`}
+      title={`Site bin — ${title}`}
       width={1100}
       height={620}
       showCloseButton
     >
       <AppDataGrid
-        key={personnelId ?? "none"}
-        className="personnel-bin-grid"
+        key={siteId ?? "none"}
+        className="site-bin-grid"
         dataSource={dataSource}
-        persistenceKey={`itm-bin-${personnelId ?? "none"}`}
+        persistenceKey={`itm-site-bin-${siteId ?? "none"}`}
         repaintChangesOnly
         height={480}
         onEditorPreparing={(e) => {

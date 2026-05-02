@@ -62,13 +62,14 @@ type PurchaseDetailLine = {
   unitPrice: number;
   lineIndex: number;
   lineTotal: number;
-  destination: "STOCK" | "PERSONNEL_BIN" | "MIXED";
+  destination: "STOCK" | "PERSONNEL_BIN" | "SITE_BIN" | "MIXED";
   targetPersonnel: { id: string; firstName: string; lastName: string } | null;
+  targetSite: { id: string; label: string } | null;
 };
 
 type PurchaseDetail = {
   id: string;
-  destination: "STOCK" | "PERSONNEL_BIN" | "MIXED";
+  destination: "STOCK" | "PERSONNEL_BIN" | "SITE_BIN" | "MIXED";
   status: "PENDING" | "COMPLETE" | "CANCELLED";
   supplier: { id: string; name: string };
   bonOriginalName: string;
@@ -79,7 +80,7 @@ type PurchaseDetail = {
   lines: PurchaseDetailLine[];
 };
 
-type LineDestination = "STOCK" | "PERSONNEL_BIN";
+type LineDestination = "STOCK" | "PERSONNEL_BIN" | "SITE_BIN";
 
 type LineDraft = {
   productId: string | null;
@@ -87,27 +88,36 @@ type LineDraft = {
   unitPrice: number;
   destination: LineDestination;
   targetPersonnelId: string | null;
+  targetSiteId: string | null;
 };
 
 const LINE_DEST_OPTIONS: { value: LineDestination; text: string }[] = [
   { value: "STOCK", text: "Stock" },
   { value: "PERSONNEL_BIN", text: "Personal bin" },
+  { value: "SITE_BIN", text: "Site bin" },
 ];
 
 function lineDestSummary(lines: LineDraft[]): {
   hasStock: boolean;
-  hasBin: boolean;
+  hasPersBin: boolean;
+  hasSiteBin: boolean;
   mixed: boolean;
 } {
   const hasStock = lines.some((l) => l.destination === "STOCK");
-  const hasBin = lines.some((l) => l.destination === "PERSONNEL_BIN");
-  const binIds = new Set(
-    lines
-      .filter((l) => l.destination === "PERSONNEL_BIN" && l.targetPersonnelId)
-      .map((l) => l.targetPersonnelId as string),
+  const hasPersBin = lines.some((l) => l.destination === "PERSONNEL_BIN");
+  const hasSiteBin = lines.some((l) => l.destination === "SITE_BIN");
+  const persLines = lines.filter((l) => l.destination === "PERSONNEL_BIN");
+  const siteLines = lines.filter((l) => l.destination === "SITE_BIN");
+  const persIds = new Set(
+    persLines.map((l) => l.targetPersonnelId).filter((x): x is string => Boolean(x)),
   );
-  const mixed = (hasStock && hasBin) || binIds.size > 1;
-  return { hasStock, hasBin, mixed };
+  const siteIds = new Set(siteLines.map((l) => l.targetSiteId).filter((x): x is string => Boolean(x)));
+  const categoryCount = [hasStock, hasPersBin, hasSiteBin].filter(Boolean).length;
+  const mixed =
+    categoryCount > 1 ||
+    (hasPersBin && persIds.size > 1) ||
+    (hasSiteBin && siteIds.size > 1);
+  return { hasStock, hasPersBin, hasSiteBin, mixed };
 }
 
 const STATUS_OPTIONS = [
@@ -134,7 +144,7 @@ function statusHint(s: "PENDING" | "COMPLETE" | "CANCELLED"): string {
 
 /** Explains what saving an edit updates (DB + inventory + derived views). */
 function buildPurchaseEditConfirmMessage(
-  summary: { hasStock: boolean; hasBin: boolean; mixed: boolean },
+  summary: { hasStock: boolean; hasPersBin: boolean; hasSiteBin: boolean; mixed: boolean },
   statusWhenLoaded: "PENDING" | "COMPLETE" | "CANCELLED",
   nextStatus: "PENDING" | "COMPLETE" | "CANCELLED",
 ): string {
@@ -143,7 +153,7 @@ function buildPurchaseEditConfirmMessage(
     "",
     "The server will update:",
     "• This purchase row (supplier, authorizer, buyer, status, notes, receipt file when replaced).",
-    "• All line items: product, quantity, unit price, and where each line is received (stock vs. personal bin and assignee).",
+    "• All line items: product, quantity, unit price, and where each line is received (stock vs. personal or site bin).",
     "",
     "When this purchase is or becomes Complete, linked inventory is kept in sync:",
   ];
@@ -153,9 +163,14 @@ function buildPurchaseEditConfirmMessage(
       "• Lines received to stock: StockMovement rows tied to this purchase and each product’s quantity on hand. Product stock statements and the Stock page read from those movements.",
     );
   }
-  if (summary.hasBin) {
+  if (summary.hasPersBin) {
     lines.push(
       "• Lines received to a personal bin: PersonnelBinItem quantities for the chosen assignee on each line (no warehouse on-hand change for those lines).",
+    );
+  }
+  if (summary.hasSiteBin) {
+    lines.push(
+      "• Lines received to a site bin: SiteBinItem quantities for the chosen site on each line (no warehouse on-hand change for those lines).",
     );
   }
 
@@ -164,10 +179,12 @@ function buildPurchaseEditConfirmMessage(
     "Supplier purchase history and product purchase-price history are built from this purchase and its lines, so they will reflect your updates.",
     "",
     summary.mixed
-      ? "This purchase mixes stock and personal-bin lines (and/or multiple bin assignees)."
-      : summary.hasBin
+      ? "This purchase mixes destinations (stock vs. bins and/or multiple bin targets)."
+      : summary.hasPersBin
         ? "All lines on this purchase are personal-bin lines to the same assignee when opened, unless you changed them."
-        : "All lines on this purchase are stock lines when opened, unless you changed them.",
+        : summary.hasSiteBin
+          ? "All lines on this purchase are site-bin lines to the same site when opened, unless you changed them."
+          : "All lines on this purchase are stock lines when opened, unless you changed them.",
   );
 
   if (statusWhenLoaded === "COMPLETE" && nextStatus === "CANCELLED") {
@@ -178,7 +195,7 @@ function buildPurchaseEditConfirmMessage(
   } else if (statusWhenLoaded === "PENDING" && nextStatus === "COMPLETE") {
     lines.push(
       "",
-      "You are completing this purchase: warehouse stock and/or personal bins will be updated per line.",
+      "You are completing this purchase: warehouse stock and/or bin quantities will be updated per line.",
     );
   }
 
@@ -198,7 +215,14 @@ export default function PurchasesPage() {
   const [status, setStatus] = useState<"PENDING" | "COMPLETE" | "CANCELLED">("PENDING");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([
-    { productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null },
+    {
+      productId: null,
+      quantity: 1,
+      unitPrice: 0,
+      destination: "STOCK",
+      targetPersonnelId: null,
+      targetSiteId: null,
+    },
   ]);
   const [bonFile, setBonFile] = useState<File | null>(null);
   const [existingBonName, setExistingBonName] = useState<string | null>(null);
@@ -221,6 +245,8 @@ export default function PurchasesPage() {
   >(null);
   const personnelAddCtxRef = useRef(personnelAddCtx);
   personnelAddCtxRef.current = personnelAddCtx;
+
+  const quickSiteLineRef = useRef<number | null>(null);
 
   const isEdit = editingId !== null;
   /** Record was cancelled before open; block edits. Choosing Cancelled in the form (e.g. from Complete) is allowed. */
@@ -314,6 +340,15 @@ export default function PurchasesPage() {
     [personnel],
   );
 
+  const lineSiteOptions = useMemo(
+    () =>
+      sites.map((s) => ({
+        id: s.id,
+        label: s.label,
+      })),
+    [sites],
+  );
+
   const productOptions = useMemo(
     () =>
       products.map((p) => ({
@@ -338,7 +373,7 @@ export default function PurchasesPage() {
     setBuyerId(null);
     setStatus("PENDING");
     setNotes("");
-    setLines([{ productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null }]);
+    setLines([{ productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null, targetSiteId: null }]);
     setBonFile(null);
     setExistingBonName(null);
     setEditingId(null);
@@ -359,14 +394,23 @@ export default function PurchasesPage() {
     setNotes(d.notes ?? "");
     setLines(
       d.lines.length > 0
-        ? d.lines.map((l) => ({
-            productId: l.productId,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-            destination: l.destination === "PERSONNEL_BIN" ? "PERSONNEL_BIN" : "STOCK",
-            targetPersonnelId: l.targetPersonnel?.id ?? null,
-          }))
-        : [{ productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null }],
+        ? d.lines.map((l) => {
+            const dest: LineDestination =
+              l.destination === "PERSONNEL_BIN"
+                ? "PERSONNEL_BIN"
+                : l.destination === "SITE_BIN"
+                  ? "SITE_BIN"
+                  : "STOCK";
+            return {
+              productId: l.productId,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+              destination: dest,
+              targetPersonnelId: l.targetPersonnel?.id ?? null,
+              targetSiteId: l.targetSite?.id ?? null,
+            };
+          })
+        : [{ productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null, targetSiteId: null }],
     );
     setBonFile(null);
     setExistingBonName(d.bonOriginalName);
@@ -397,7 +441,7 @@ export default function PurchasesPage() {
   const addLine = useCallback(() => {
     setLines((prev) => [
       ...prev,
-      { productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null },
+      { productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null, targetSiteId: null },
     ]);
   }, []);
 
@@ -452,9 +496,17 @@ export default function PurchasesPage() {
     await loadMeta();
   }, [loadMeta]);
 
-  const handleSiteCreated = useCallback(async () => {
-    await loadMeta();
-  }, [loadMeta]);
+  const handleSiteCreated = useCallback(
+    async (row?: SiteOpt) => {
+      await loadMeta();
+      const idx = quickSiteLineRef.current;
+      if (row && idx !== null) {
+        updateLine(idx, { targetSiteId: row.id });
+      }
+      quickSiteLineRef.current = null;
+    },
+    [loadMeta, updateLine],
+  );
 
   const submitPurchase = useCallback(async () => {
     if (isAlreadyCancelled) {
@@ -485,6 +537,7 @@ export default function PurchasesPage() {
         unitPrice: l.unitPrice,
         destination: l.destination,
         targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
+        targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
       }));
     if (payloadLines.length === 0) {
       notify("Add at least one product line", "warning", 2500);
@@ -494,6 +547,10 @@ export default function PurchasesPage() {
       const pl = payloadLines[i];
       if (pl.destination === "PERSONNEL_BIN" && !pl.targetPersonnelId) {
         notify(`Line ${i + 1}: select who receives the personal bin for that product.`, "warning", 3500);
+        return;
+      }
+      if (pl.destination === "SITE_BIN" && !pl.targetSiteId) {
+        notify(`Line ${i + 1}: select which site receives that product in the site bin.`, "warning", 3500);
         return;
       }
     }
@@ -584,7 +641,7 @@ export default function PurchasesPage() {
   const deletePurchase = useCallback(
     async (row: PurchaseListRow) => {
       const ok = window.confirm(
-        "Delete this purchase? If it was completed, warehouse stock or personal bin quantities will be reversed.",
+        "Delete this purchase? If it was completed, warehouse stock or bin quantities (personal or site) will be reversed.",
       );
       if (!ok) return;
       try {
@@ -894,13 +951,13 @@ export default function PurchasesPage() {
               <>
                 Changing products, quantities, prices, or where each line is received on a{" "}
                 <strong>completed</strong> purchase updates linked <strong>stock movements</strong> and{" "}
-                <strong>on-hand</strong> (warehouse lines) and/or <strong>personal bin</strong> quantities
+                <strong>on-hand</strong> (warehouse lines) and/or <strong>personal or site bin</strong> quantities
                 (bin lines), so statements and purchase history stay consistent.
               </>
             ) : (
               <>
-                Per line, choose <strong>Stock</strong> (warehouse) or <strong>Personal bin</strong> and
-                the assignee for bin lines. Totals use quantity × unit price.
+                Per line, choose <strong>Stock</strong>, <strong>Personal bin</strong> (assignee), or{" "}
+                <strong>Site bin</strong> (location). Totals use quantity × unit price.
               </>
             )}
           </p>
@@ -909,7 +966,7 @@ export default function PurchasesPage() {
               <span>#</span>
               <span>Product</span>
               <span>Receive</span>
-              <span>Bin assignee</span>
+              <span>Assignee / site</span>
               <span>Qty</span>
               <span>Unit</span>
               <span>Total</span>
@@ -954,39 +1011,73 @@ export default function PurchasesPage() {
                       const v = (e.value as LineDestination) ?? "STOCK";
                       updateLine(index, {
                         destination: v,
-                        targetPersonnelId: v === "STOCK" ? null : line.targetPersonnelId,
+                        targetPersonnelId: v === "PERSONNEL_BIN" ? line.targetPersonnelId : null,
+                        targetSiteId: v === "SITE_BIN" ? line.targetSiteId : null,
                       });
                     }}
                     showClearButton={false}
                     disabled={linesLocked}
                   />
                 </div>
-                <div className="purchase-form__inline-add purchase-form__inline-add--line">
-                  <div className="purchase-form__control">
-                    <SelectBox
-                      dataSource={linePersonnelOptions}
-                      displayExpr="label"
-                      valueExpr="id"
-                      value={line.destination === "PERSONNEL_BIN" ? line.targetPersonnelId : null}
-                      onValueChanged={(e) =>
-                        updateLine(index, { targetPersonnelId: (e.value as string) ?? null })
-                      }
-                      searchEnabled
-                      showDropDownButton
-                      showClearButton
-                      placeholder={line.destination === "PERSONNEL_BIN" ? "Assignee…" : "—"}
-                      disabled={linesLocked || line.destination === "STOCK"}
-                    />
-                  </div>
-                  <Button
-                    icon="add"
-                    stylingMode="text"
-                    hint="Add personnel"
-                    disabled={linesLocked || line.destination === "STOCK"}
-                    onClick={() =>
-                      setPersonnelAddCtx({ role: "bin", lineIndex: index })
-                    }
-                  />
+                <div className="purchase-form__assignee-site-cell">
+                  {line.destination === "STOCK" ? (
+                    <span className="purchase-form__muted-dash">—</span>
+                  ) : line.destination === "PERSONNEL_BIN" ? (
+                    <div className="purchase-form__inline-add purchase-form__inline-add--line">
+                      <div className="purchase-form__control">
+                        <SelectBox
+                          dataSource={linePersonnelOptions}
+                          displayExpr="label"
+                          valueExpr="id"
+                          value={line.targetPersonnelId}
+                          onValueChanged={(e) =>
+                            updateLine(index, { targetPersonnelId: (e.value as string) ?? null })
+                          }
+                          searchEnabled
+                          showDropDownButton
+                          showClearButton
+                          placeholder="Assignee…"
+                          disabled={linesLocked}
+                        />
+                      </div>
+                      <Button
+                        icon="add"
+                        stylingMode="text"
+                        hint="Add personnel"
+                        disabled={linesLocked}
+                        onClick={() => setPersonnelAddCtx({ role: "bin", lineIndex: index })}
+                      />
+                    </div>
+                  ) : (
+                    <div className="purchase-form__inline-add purchase-form__inline-add--line">
+                      <div className="purchase-form__control">
+                        <SelectBox
+                          dataSource={lineSiteOptions}
+                          displayExpr="label"
+                          valueExpr="id"
+                          value={line.targetSiteId}
+                          onValueChanged={(e) =>
+                            updateLine(index, { targetSiteId: (e.value as string) ?? null })
+                          }
+                          searchEnabled
+                          showDropDownButton
+                          showClearButton
+                          placeholder="Site…"
+                          disabled={linesLocked}
+                        />
+                      </div>
+                      <Button
+                        icon="add"
+                        stylingMode="text"
+                        hint="Add site"
+                        disabled={linesLocked}
+                        onClick={() => {
+                          quickSiteLineRef.current = index;
+                          setQuickSiteOpen(true);
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="purchase-form__control">
                   <NumberBox
@@ -1082,10 +1173,11 @@ export default function PurchasesPage() {
       <QuickAddSitePopup
         visible={quickSiteOpen}
         companyOptions={companies}
-        onClose={() => setQuickSiteOpen(false)}
-        onCreated={(_site) => {
-          void handleSiteCreated();
+        onClose={() => {
+          quickSiteLineRef.current = null;
+          setQuickSiteOpen(false);
         }}
+        onCreated={(site) => void handleSiteCreated(site)}
         onOpenAddCompany={() => setQuickCompanyOpen(true)}
       />
       <QuickAddPersonnelPopup
@@ -1094,7 +1186,10 @@ export default function PurchasesPage() {
         sites={sites}
         onClose={() => setPersonnelAddCtx(null)}
         onCreated={(row) => void handlePersonnelCreated(row)}
-        onOpenAddSite={() => setQuickSiteOpen(true)}
+        onOpenAddSite={() => {
+          quickSiteLineRef.current = null;
+          setQuickSiteOpen(true);
+        }}
       />
     </div>
   );

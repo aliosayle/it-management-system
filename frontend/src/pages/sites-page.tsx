@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import CustomStore from "devextreme/data/custom_store";
 import {
   Column,
@@ -8,9 +8,11 @@ import {
   Editing,
   Popup,
   RequiredRule,
+  ColumnButton,
 } from "devextreme-react/data-grid";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { SiteBinPopup, type ProductOption } from "../components/site-bin-popup";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 
@@ -18,6 +20,10 @@ type Company = { id: string; name: string };
 
 export default function SitesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [binOpen, setBinOpen] = useState(false);
+  const [binSiteId, setBinSiteId] = useState<string | null>(null);
+  const [binSiteTitle, setBinSiteTitle] = useState("");
+  const [binProducts, setBinProducts] = useState<ProductOption[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -28,6 +34,42 @@ export default function SitesPage() {
         notify(getErrorMessage(e, "Failed to load companies"), "error", 5000);
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    if (!binOpen) {
+      return;
+    }
+    (async () => {
+      try {
+        const rows = (await apiFetch("/api/products")) as { id: string; sku: string; name: string }[];
+        setBinProducts(
+          rows.map((p) => ({
+            id: p.id,
+            sku: p.sku,
+            name: p.name,
+            label: `${p.sku} — ${p.name}`,
+          })),
+        );
+      } catch (e: unknown) {
+        notify(getErrorMessage(e, "Failed to load products for bin"), "error", 5000);
+      }
+    })();
+  }, [binOpen]);
+
+  const openSiteBin = useCallback((row: Record<string, unknown>) => {
+    const id = typeof row.id === "string" ? row.id : null;
+    const label = typeof row.label === "string" ? row.label : "";
+    if (!id) return;
+    setBinSiteId(id);
+    setBinSiteTitle(label || id);
+    setBinOpen(true);
+  }, []);
+
+  const closeSiteBin = useCallback(() => {
+    setBinOpen(false);
+    setBinSiteId(null);
+    setBinSiteTitle("");
   }, []);
 
   const dataSource = useMemo(
@@ -116,10 +158,33 @@ export default function SitesPage() {
           allowEditing={false}
           formItem={{ visible: false }}
         />
+        <Column type="buttons" width={96}>
+          <ColumnButton
+            hint="Site bin — equipment and consumables at this location"
+            icon="box"
+            onClick={(e) => {
+              if (e.row?.isNewRow) {
+                return;
+              }
+              const row = e.row?.data as Record<string, unknown> | undefined;
+              if (row) {
+                openSiteBin(row);
+              }
+            }}
+          />
+        </Column>
         <Paging defaultPageSize={20} />
         <Pager showPageSizeSelector showInfo />
       </AppDataGrid>
       </div>
+
+      <SiteBinPopup
+        visible={binOpen}
+        siteId={binSiteId}
+        title={binSiteTitle}
+        products={binProducts}
+        onClose={closeSiteBin}
+      />
     </div>
   );
 }
