@@ -72,12 +72,15 @@ const upload = multer({
 
 const lineSchema = z
   .object({
+    supplierId: z.string().min(1),
     productId: z.string().min(1),
     quantity: z.number().positive(),
     unitPrice: z.number().nonnegative(),
     destination: z.enum(LINE_DESTINATIONS),
     targetPersonnelId: z.string().nullable().optional(),
     targetSiteId: z.string().nullable().optional(),
+    /** Optional cost center / allocation (must exist in Department). */
+    departmentId: z.string().optional().nullable(),
   })
   .superRefine((line, ctx) => {
     if (line.destination === "PERSONNEL_BIN") {
@@ -131,7 +134,6 @@ const lineSchema = z
 const createBodySchema = z.object({
   authorizedByPersonnelId: z.string().min(1),
   buyerPersonnelId: z.string().min(1),
-  supplierId: z.string().min(1),
   notes: z.string().optional().nullable(),
   status: z.enum(PURCHASE_STATUSES).optional(),
   lines: z.array(lineSchema).min(1),
@@ -140,7 +142,6 @@ const createBodySchema = z.object({
 const patchBodySchema = z.object({
   authorizedByPersonnelId: z.string().min(1).optional(),
   buyerPersonnelId: z.string().min(1).optional(),
-  supplierId: z.string().min(1).optional(),
   notes: z.union([z.string(), z.null()]).optional(),
   lines: z.array(lineSchema).min(1).optional(),
   status: z.enum(PURCHASE_STATUSES).optional(),
@@ -149,16 +150,25 @@ const patchBodySchema = z.object({
 type Tx = Prisma.TransactionClient;
 
 type LineInput = {
+  supplierId: string;
   productId: string;
   quantity: number;
   unitPrice: number;
   destination: LineDestination;
   targetPersonnelId: string | null;
   targetSiteId: string | null;
+  departmentId: string | null;
 };
 
 function normalizedLineInput(raw: z.infer<typeof lineSchema>): LineInput {
+  const dept =
+    raw.departmentId === undefined || raw.departmentId === null
+      ? null
+      : String(raw.departmentId).trim() === ""
+        ? null
+        : String(raw.departmentId).trim();
   return {
+    supplierId: raw.supplierId,
     productId: raw.productId,
     quantity: raw.quantity,
     unitPrice: raw.unitPrice,
@@ -166,6 +176,7 @@ function normalizedLineInput(raw: z.infer<typeof lineSchema>): LineInput {
     targetPersonnelId:
       raw.destination === "PERSONNEL_BIN" ? raw.targetPersonnelId ?? null : null,
     targetSiteId: raw.destination === "SITE_BIN" ? raw.targetSiteId ?? null : null,
+    departmentId: dept,
   };
 }
 
@@ -230,15 +241,21 @@ function purchaseListItem(p: {
   bonOriginalName: string;
   notes: string | null;
   createdAt: Date;
-  supplier: { name: string };
   authorizedBy: { firstName: string; lastName: string };
   buyerPersonnel: { firstName: string; lastName: string };
   targetPersonnel: { firstName: string; lastName: string } | null;
   targetSite: { name: string; company: { name: string } } | null;
   createdBy: { displayName: string; email: string };
   _count: { lines: number };
-  lines: { quantity: Prisma.Decimal; unitPrice: Prisma.Decimal }[];
+  lines: {
+    quantity: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+    supplier: { name: string };
+  }[];
 }) {
+  const supplierLabels = [...new Set(p.lines.map((l) => l.supplier.name))];
+  const supplierName =
+    supplierLabels.length === 1 ? supplierLabels[0]! : "Various suppliers";
   const totalAmount = p.lines.reduce(
     (sum, l) => sum + Number(l.quantity) * Number(l.unitPrice),
     0,
@@ -259,7 +276,7 @@ function purchaseListItem(p: {
     id: p.id,
     destination: p.destination,
     status: p.status,
-    supplierName: p.supplier.name,
+    supplierName,
     bonOriginalName: p.bonOriginalName,
     notes: p.notes,
     createdAt: p.createdAt,
@@ -279,14 +296,19 @@ router.get("/", async (_req, res) => {
     orderBy: { createdAt: "desc" },
     take: 200,
     include: {
-      supplier: { select: { name: true } },
       authorizedBy: { select: { firstName: true, lastName: true } },
       buyerPersonnel: { select: { firstName: true, lastName: true } },
       targetPersonnel: { select: { firstName: true, lastName: true } },
       targetSite: { include: { company: { select: { name: true } } } },
       createdBy: { select: { displayName: true, email: true } },
       _count: { select: { lines: true } },
-      lines: { select: { quantity: true, unitPrice: true } },
+      lines: {
+        select: {
+          quantity: true,
+          unitPrice: true,
+          supplier: { select: { name: true } },
+        },
+      },
     },
   });
   res.json(rows.map(purchaseListItem));
@@ -329,6 +351,12 @@ router.get("/:id", async (req, res) => {
           product: { select: { id: true, sku: true, name: true } },
           targetPersonnel: { select: { id: true, firstName: true, lastName: true } },
           targetSite: { include: { company: { select: { name: true } } } },
+          supplier: { select: { id: true, name: true } },
+          department: {
+            include: {
+              site: { include: { company: { select: { id: true, name: true } } } },
+            },
+          },
         },
       },
     },
@@ -365,6 +393,15 @@ router.get("/:id", async (req, res) => {
         ? {
             id: l.targetSite.id,
             label: `${l.targetSite.company.name} / ${l.targetSite.name}`,
+          }
+        : null,
+      supplier: l.supplier,
+      department: l.department
+        ? {
+            id: l.department.id,
+            name: l.department.name,
+            label: `${l.department.site.company.name} / ${l.department.site.name} — ${l.department.name}`,
+            siteId: l.department.siteId,
           }
         : null,
     })),
@@ -517,6 +554,7 @@ async function replacePurchaseLinesOnly(tx: Tx, purchaseId: string, newLines: Li
     await tx.purchaseLine.create({
       data: {
         purchaseId,
+        supplierId: l.supplierId,
         productId: l.productId,
         quantity: new Prisma.Decimal(l.quantity),
         unitPrice: new Prisma.Decimal(l.unitPrice),
@@ -524,6 +562,7 @@ async function replacePurchaseLinesOnly(tx: Tx, purchaseId: string, newLines: Li
         destination: l.destination,
         targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
         targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
+        departmentId: l.departmentId,
       },
     });
   }
@@ -550,6 +589,7 @@ async function replaceCompletedPurchaseLines(
     await tx.purchaseLine.create({
       data: {
         purchaseId,
+        supplierId: l.supplierId,
         productId: l.productId,
         quantity: new Prisma.Decimal(l.quantity),
         unitPrice: new Prisma.Decimal(l.unitPrice),
@@ -557,6 +597,7 @@ async function replaceCompletedPurchaseLines(
         destination: l.destination,
         targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
         targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
+        departmentId: l.departmentId,
       },
     });
   }
@@ -616,7 +657,6 @@ router.post("/", (req, res, next) => {
   const parsed = createBodySchema.safeParse({
     authorizedByPersonnelId: req.body.authorizedByPersonnelId,
     buyerPersonnelId: req.body.buyerPersonnelId,
-    supplierId: req.body.supplierId,
     notes: req.body.notes || null,
     status: statusRaw as PurchaseStatusLiteral | undefined,
     lines: linesRaw,
@@ -665,10 +705,11 @@ router.post("/", (req, res, next) => {
     return;
   }
 
-  const supplier = await prisma.supplier.findUnique({ where: { id: data.supplierId } });
-  if (!supplier) {
+  const supplierIds = [...new Set(lineInputs.map((l) => l.supplierId))];
+  const suppliersFound = await prisma.supplier.findMany({ where: { id: { in: supplierIds } } });
+  if (suppliersFound.length !== supplierIds.length) {
     fs.unlink(file.path, () => {});
-    res.status(400).json({ error: "Supplier not found" });
+    res.status(400).json({ error: "One or more suppliers not found" });
     return;
   }
 
@@ -706,6 +747,16 @@ router.post("/", (req, res, next) => {
     return;
   }
 
+  const departmentIds = [...new Set(lineInputs.map((l) => l.departmentId).filter(Boolean))] as string[];
+  if (departmentIds.length > 0) {
+    const deptRows = await prisma.department.findMany({ where: { id: { in: departmentIds } } });
+    if (deptRows.length !== departmentIds.length) {
+      fs.unlink(file.path, () => {});
+      res.status(400).json({ error: "One or more departments not found" });
+      return;
+    }
+  }
+
   const userId = req.user!.sub;
   const relPath = path.relative(process.cwd(), file.path);
   const storedPath = relPath && !relPath.startsWith("..") ? relPath : file.path;
@@ -718,7 +769,7 @@ router.post("/", (req, res, next) => {
         data: {
           destination: summary.destination,
           status,
-          supplierId: data.supplierId,
+          supplierId: lineInputs[0]!.supplierId,
           buyerPersonnelId: data.buyerPersonnelId,
           authorizedByPersonnelId: data.authorizedByPersonnelId,
           targetPersonnelId: summary.targetPersonnelId,
@@ -729,6 +780,7 @@ router.post("/", (req, res, next) => {
           createdByUserId: userId,
           lines: {
             create: lineInputs.map((l, i) => ({
+              supplierId: l.supplierId,
               productId: l.productId,
               quantity: new Prisma.Decimal(l.quantity),
               unitPrice: new Prisma.Decimal(l.unitPrice),
@@ -736,6 +788,7 @@ router.post("/", (req, res, next) => {
               destination: l.destination,
               targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
               targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
+              departmentId: l.departmentId,
             })),
           },
         },
@@ -914,15 +967,6 @@ router.patch("/:id", (req, res, next) => {
     }
   }
 
-  if (p.supplierId) {
-    const s = await prisma.supplier.findUnique({ where: { id: p.supplierId } });
-    if (!s) {
-      if (hasFile && req.file) fs.unlink(req.file.path, () => {});
-      res.status(400).json({ error: "Supplier not found" });
-      return;
-    }
-  }
-
   let normalizedPatchLines: LineInput[] | undefined;
   if (p.lines) {
     normalizedPatchLines = p.lines.map(normalizedLineInput);
@@ -954,10 +998,28 @@ router.patch("/:id", (req, res, next) => {
       ),
     ];
     for (const sid of siteTargetIds) {
-      const s = await prisma.site.findUnique({ where: { id: sid } });
-      if (!s) {
+      const site = await prisma.site.findUnique({ where: { id: sid } });
+      if (!site) {
         if (hasFile && req.file) fs.unlink(req.file.path, () => {});
-        res.status(400).json({ error: "Target site not found for a site bin line" });
+        res.status(400).json({ error: "Target site not found for a site-bin line" });
+        return;
+      }
+    }
+    const lineSupplierIds = [...new Set(normalizedPatchLines.map((l) => l.supplierId))];
+    const lineSuppliers = await prisma.supplier.findMany({ where: { id: { in: lineSupplierIds } } });
+    if (lineSuppliers.length !== lineSupplierIds.length) {
+      if (hasFile && req.file) fs.unlink(req.file.path, () => {});
+      res.status(400).json({ error: "One or more suppliers not found for line items" });
+      return;
+    }
+    const patchDepartmentIds = [
+      ...new Set(normalizedPatchLines.map((l) => l.departmentId).filter(Boolean)),
+    ] as string[];
+    if (patchDepartmentIds.length > 0) {
+      const deptRows = await prisma.department.findMany({ where: { id: { in: patchDepartmentIds } } });
+      if (deptRows.length !== patchDepartmentIds.length) {
+        if (hasFile && req.file) fs.unlink(req.file.path, () => {});
+        res.status(400).json({ error: "One or more departments not found" });
         return;
       }
     }
@@ -1010,6 +1072,7 @@ router.patch("/:id", (req, res, next) => {
               destination: summary.destination,
               targetPersonnelId: summary.targetPersonnelId,
               targetSiteId: summary.targetSiteId,
+              supplierId: normalizedPatchLines[0]!.supplierId,
             },
           });
         } else if (existing.status === PurchaseStatus.PENDING) {
@@ -1021,6 +1084,7 @@ router.patch("/:id", (req, res, next) => {
               destination: summary.destination,
               targetPersonnelId: summary.targetPersonnelId,
               targetSiteId: summary.targetSiteId,
+              supplierId: normalizedPatchLines[0]!.supplierId,
             },
           });
         }
@@ -1042,7 +1106,6 @@ router.patch("/:id", (req, res, next) => {
       const updateData: {
         authorizedByPersonnelId?: string;
         buyerPersonnelId?: string;
-        supplierId?: string;
         notes?: string | null;
         status?: PurchaseStatus;
         bonStoredPath?: string;
@@ -1054,9 +1117,6 @@ router.patch("/:id", (req, res, next) => {
       }
       if (p.buyerPersonnelId !== undefined) {
         updateData.buyerPersonnelId = p.buyerPersonnelId;
-      }
-      if (p.supplierId !== undefined) {
-        updateData.supplierId = p.supplierId;
       }
       if (p.notes !== undefined) {
         updateData.notes = nextNotes ?? null;

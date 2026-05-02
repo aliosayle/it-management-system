@@ -11,6 +11,7 @@ import sitesRoutes from "./routes/sites.js";
 import personnelRoutes from "./routes/personnel.js";
 import purchasesRoutes from "./routes/purchases.js";
 import suppliersRoutes from "./routes/suppliers.js";
+import departmentsRoutes from "./routes/departments.js";
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
@@ -42,6 +43,7 @@ app.use("/api/sites", sitesRoutes);
 app.use("/api/personnel", personnelRoutes);
 app.use("/api/purchases", purchasesRoutes);
 app.use("/api/suppliers", suppliersRoutes);
+app.use("/api/departments", departmentsRoutes);
 
 app.use(
   (

@@ -72,10 +72,25 @@ model Site {
   updatedAt              DateTime       @updatedAt
   personnel              Personnel[]
   siteBinItems           SiteBinItem[]
+  departments            Department[]
   purchaseHeaderTargets  Purchase[]     @relation("PurchaseSiteBinSummary")
   purchaseLinesBinTarget PurchaseLine[] @relation("PurchaseLineSiteBinTarget")
 
   @@index([companyId])
+}
+
+/** Organizational unit under a site (cost center / charge codes). */
+model Department {
+  id             String         @id @default(cuid())
+  siteId         String
+  site           Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name           String         @db.VarChar(256)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  purchaseLines  PurchaseLine[]
+
+  @@unique([siteId, name])
+  @@index([siteId])
 }
 
 /// People managed in IT (bins, sites, etc.). `user` is optional—only if they should log into this app.
@@ -105,14 +120,15 @@ model Personnel {
 }
 
 model Supplier {
-  id        String     @id @default(cuid())
-  name      String     @unique @db.VarChar(512)
-  email     String?    @db.VarChar(255)
-  phone     String?    @db.VarChar(64)
-  notes     String?    @db.Text
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  purchases Purchase[]
+  id             String         @id @default(cuid())
+  name           String         @unique @db.VarChar(512)
+  email          String?        @db.VarChar(255)
+  phone          String?        @db.VarChar(64)
+  notes          String?        @db.Text
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  purchases      Purchase[]
+  purchaseLines  PurchaseLine[]
 
   @@index([name])
 }
@@ -204,6 +220,8 @@ model PurchaseLine {
   id                  String               @id @default(cuid())
   purchaseId          String
   purchase            Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  supplierId          String
+  supplier            Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   productId           String
   product             Product              @relation(fields: [productId], references: [id])
   quantity            Decimal              @db.Decimal(14, 4)
@@ -215,11 +233,15 @@ model PurchaseLine {
   targetPersonnel   Personnel?          @relation("PurchaseLineBinTarget", fields: [targetPersonnelId], references: [id], onDelete: SetNull)
   targetSiteId      String?
   targetSite        Site?               @relation("PurchaseLineSiteBinTarget", fields: [targetSiteId], references: [id], onDelete: SetNull)
+  departmentId      String?
+  department        Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
   @@index([purchaseId])
   @@index([productId])
+  @@index([supplierId])
   @@index([targetPersonnelId])
   @@index([targetSiteId])
+  @@index([departmentId])
 }
 
 /// IN/RETURN/FOUND: units received. OUT/SCRAP/LOSS: units removed. ADJUST: `quantity` is the new on-hand level.

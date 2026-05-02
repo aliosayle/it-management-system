@@ -57,7 +57,9 @@ router.get("/:id/purchases", async (req, res) => {
     return;
   }
   const purchases = await prisma.purchase.findMany({
-    where: { supplierId: req.params.id },
+    where: {
+      lines: { some: { supplierId: req.params.id } },
+    },
     orderBy: { createdAt: "desc" },
     take: 500,
     include: {

@@ -158,7 +158,8 @@ export default function SitesPage() {
           allowEditing={false}
           formItem={{ visible: false }}
         />
-        <Column type="buttons" width={96}>
+        <Column type="buttons" width={140}>
+          <ColumnButton name="edit" />
           <ColumnButton
             hint="Site bin — equipment and consumables at this location"
             icon="box"
@@ -172,6 +173,7 @@ export default function SitesPage() {
               }
             }}
           />
+          <ColumnButton name="delete" />
         </Column>
         <Paging defaultPageSize={20} />
         <Pager showPageSizeSelector showInfo />

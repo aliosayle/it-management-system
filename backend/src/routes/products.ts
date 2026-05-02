@@ -110,9 +110,9 @@ router.get("/:id/purchase-history", async (req, res) => {
           destination: true,
           status: true,
           bonOriginalName: true,
-          supplier: { select: { id: true, name: true } },
         },
       },
+      supplier: { select: { id: true, name: true } },
     },
   });
 
@@ -123,8 +123,8 @@ router.get("/:id/purchase-history", async (req, res) => {
       destination: r.purchase.destination,
       lineDestination: r.destination,
       status: r.purchase.status,
-      supplierId: r.purchase.supplier.id,
-      supplierName: r.purchase.supplier.name,
+      supplierId: r.supplier.id,
+      supplierName: r.supplier.name,
       bonOriginalName: r.purchase.bonOriginalName,
       quantity: Number(r.quantity),
       unitPrice: Number(r.unitPrice),

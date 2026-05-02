@@ -39,6 +39,8 @@ type ProductRow = { id: string; sku: string; name: string };
 
 type SupplierRow = { id: string; name: string };
 
+type DepartmentRow = { id: string; label: string; siteLabel: string; name: string; siteId: string };
+
 type PurchaseListRow = {
   id: string;
   status: string;
@@ -63,8 +65,10 @@ type PurchaseDetailLine = {
   lineIndex: number;
   lineTotal: number;
   destination: "STOCK" | "PERSONNEL_BIN" | "SITE_BIN" | "MIXED";
+  supplier: { id: string; name: string };
   targetPersonnel: { id: string; firstName: string; lastName: string } | null;
   targetSite: { id: string; label: string } | null;
+  department: { id: string; name: string; label: string; siteId: string } | null;
 };
 
 type PurchaseDetail = {
@@ -87,8 +91,11 @@ type LineDraft = {
   quantity: number;
   unitPrice: number;
   destination: LineDestination;
+  supplierId: string | null;
   targetPersonnelId: string | null;
   targetSiteId: string | null;
+  /** Optional cost center; must match a site department. */
+  departmentId: string | null;
 };
 
 const LINE_DEST_OPTIONS: { value: LineDestination; text: string }[] = [
@@ -152,8 +159,8 @@ function buildPurchaseEditConfirmMessage(
     "Save changes to this purchase?",
     "",
     "The server will update:",
-    "• This purchase row (supplier, authorizer, buyer, status, notes, receipt file when replaced).",
-    "• All line items: product, quantity, unit price, and where each line is received (stock vs. personal or site bin).",
+    "• This purchase row (authorizer, buyer, status, notes, receipt file when replaced).",
+    "• All line items: supplier, product, quantity, unit price, and where each line is received (stock vs. personal or site bin).",
     "",
     "When this purchase is or becomes Complete, linked inventory is kept in sync:",
   ];
@@ -209,7 +216,7 @@ export default function PurchasesPage() {
   const [personnel, setPersonnel] = useState<PersonnelRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
-  const [supplierId, setSupplierId] = useState<string | null>(null);
+  const [departments, setDepartments] = useState<DepartmentRow[]>([]);
   const [authorizerId, setAuthorizerId] = useState<string | null>(null);
   const [buyerId, setBuyerId] = useState<string | null>(null);
   const [status, setStatus] = useState<"PENDING" | "COMPLETE" | "CANCELLED">("PENDING");
@@ -220,8 +227,10 @@ export default function PurchasesPage() {
       quantity: 1,
       unitPrice: 0,
       destination: "STOCK",
+      supplierId: null,
       targetPersonnelId: null,
       targetSiteId: null,
+      departmentId: null,
     },
   ]);
   const [bonFile, setBonFile] = useState<File | null>(null);
@@ -256,16 +265,18 @@ export default function PurchasesPage() {
     isEdit && statusWhenLoaded === "COMPLETE" && status === "CANCELLED";
 
   const loadMeta = useCallback(async () => {
-    const [pl, pr, su, co, si] = await Promise.all([
+    const [pl, pr, su, de, co, si] = await Promise.all([
       apiFetch("/api/personnel") as Promise<PersonnelRow[]>,
       apiFetch("/api/products") as Promise<ProductRow[]>,
       apiFetch("/api/suppliers") as Promise<SupplierRow[]>,
+      apiFetch("/api/departments") as Promise<DepartmentRow[]>,
       apiFetch("/api/companies") as Promise<CompanyOpt[]>,
       apiFetch("/api/sites") as Promise<Array<{ id: string; label: string }>>,
     ]);
     setPersonnel(pl);
     setProducts(pr);
     setSuppliers(su);
+    setDepartments(de);
     setCompanies(co);
     setSites(si.map((s) => ({ id: s.id, label: s.label })));
   }, []);
@@ -331,6 +342,15 @@ export default function PurchasesPage() {
     [suppliers],
   );
 
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        id: d.id,
+        label: d.label,
+      })),
+    [departments],
+  );
+
   const linePersonnelOptions = useMemo(
     () =>
       personnel.map((p) => ({
@@ -368,17 +388,28 @@ export default function PurchasesPage() {
   );
 
   const resetForm = useCallback(() => {
-    setSupplierId(null);
+    const firstSupplierId = suppliers[0]?.id ?? null;
     setAuthorizerId(null);
     setBuyerId(null);
     setStatus("PENDING");
     setNotes("");
-    setLines([{ productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null, targetSiteId: null }]);
+    setLines([
+      {
+        productId: null,
+        quantity: 1,
+        unitPrice: 0,
+        destination: "STOCK",
+        supplierId: firstSupplierId,
+        targetPersonnelId: null,
+        targetSiteId: null,
+        departmentId: null,
+      },
+    ]);
     setBonFile(null);
     setExistingBonName(null);
     setEditingId(null);
     setStatusWhenLoaded(null);
-  }, []);
+  }, [suppliers]);
 
   const openCreate = useCallback(() => {
     resetForm();
@@ -387,7 +418,6 @@ export default function PurchasesPage() {
 
   const applyDetailToForm = useCallback((d: PurchaseDetail) => {
     setEditingId(d.id);
-    setSupplierId(d.supplier.id);
     setAuthorizerId(d.authorizedBy.id);
     setBuyerId(d.buyerPersonnel.id);
     setStatus(d.status);
@@ -406,16 +436,29 @@ export default function PurchasesPage() {
               quantity: l.quantity,
               unitPrice: l.unitPrice,
               destination: dest,
+              supplierId: l.supplier?.id ?? null,
               targetPersonnelId: l.targetPersonnel?.id ?? null,
               targetSiteId: l.targetSite?.id ?? null,
+              departmentId: l.department?.id ?? null,
             };
           })
-        : [{ productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null, targetSiteId: null }],
+        : [
+            {
+              productId: null,
+              quantity: 1,
+              unitPrice: 0,
+              destination: "STOCK",
+              supplierId: suppliers[0]?.id ?? null,
+              targetPersonnelId: null,
+              targetSiteId: null,
+              departmentId: null,
+            },
+          ],
     );
     setBonFile(null);
     setExistingBonName(d.bonOriginalName);
     setStatusWhenLoaded(d.status);
-  }, []);
+  }, [suppliers]);
 
   const openEdit = useCallback(
     async (row: PurchaseListRow) => {
@@ -439,11 +482,26 @@ export default function PurchasesPage() {
   }, []);
 
   const addLine = useCallback(() => {
-    setLines((prev) => [
-      ...prev,
-      { productId: null, quantity: 1, unitPrice: 0, destination: "STOCK", targetPersonnelId: null, targetSiteId: null },
-    ]);
-  }, []);
+    setLines((prev) => {
+      const inheritSupplier =
+        prev.length > 0 ? prev[prev.length - 1]!.supplierId : suppliers[0]?.id ?? null;
+      const inheritDept =
+        prev.length > 0 ? prev[prev.length - 1]!.departmentId : null;
+      return [
+        ...prev,
+        {
+          productId: null,
+          quantity: 1,
+          unitPrice: 0,
+          destination: "STOCK",
+          supplierId: inheritSupplier,
+          targetPersonnelId: null,
+          targetSiteId: null,
+          departmentId: inheritDept,
+        },
+      ];
+    });
+  }, [suppliers]);
 
   const removeLine = useCallback((index: number) => {
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
@@ -454,13 +512,18 @@ export default function PurchasesPage() {
   }, []);
 
   const quickProductLineRef = useRef<number | null>(null);
+  const quickSupplierLineRef = useRef<number | null>(null);
 
   const handleSupplierCreated = useCallback(
     async (row: { id: string; name: string }) => {
       await loadMeta();
-      setSupplierId(row.id);
+      const idx = quickSupplierLineRef.current;
+      if (idx !== null) {
+        updateLine(idx, { supplierId: row.id });
+      }
+      quickSupplierLineRef.current = null;
     },
-    [loadMeta],
+    [loadMeta, updateLine],
   );
 
   const handleProductCreated = useCallback(
@@ -513,10 +576,6 @@ export default function PurchasesPage() {
       notify("This purchase is cancelled and cannot be edited.", "warning", 3000);
       return;
     }
-    if (!supplierId) {
-      notify("Select a supplier", "warning", 2500);
-      return;
-    }
     if (!authorizerId) {
       notify("Select who authorized the purchase", "warning", 2500);
       return;
@@ -532,12 +591,14 @@ export default function PurchasesPage() {
     const payloadLines = lines
       .filter((l) => l.productId && l.quantity > 0)
       .map((l) => ({
+        supplierId: l.supplierId as string,
         productId: l.productId as string,
         quantity: l.quantity,
         unitPrice: l.unitPrice,
         destination: l.destination,
         targetPersonnelId: l.destination === "PERSONNEL_BIN" ? l.targetPersonnelId : null,
         targetSiteId: l.destination === "SITE_BIN" ? l.targetSiteId : null,
+        departmentId: l.departmentId ?? null,
       }));
     if (payloadLines.length === 0) {
       notify("Add at least one product line", "warning", 2500);
@@ -545,6 +606,10 @@ export default function PurchasesPage() {
     }
     for (let i = 0; i < payloadLines.length; i++) {
       const pl = payloadLines[i];
+      if (!pl.supplierId) {
+        notify(`Line ${i + 1}: select a supplier for that line.`, "warning", 3500);
+        return;
+      }
       if (pl.destination === "PERSONNEL_BIN" && !pl.targetPersonnelId) {
         notify(`Line ${i + 1}: select who receives the personal bin for that product.`, "warning", 3500);
         return;
@@ -575,7 +640,6 @@ export default function PurchasesPage() {
           const fd = new FormData();
           fd.append("authorizedByPersonnelId", authorizerId);
           fd.append("buyerPersonnelId", buyerId);
-          fd.append("supplierId", supplierId);
           fd.append("status", status);
           if (!omitLinesFromPatch) {
             fd.append("lines", JSON.stringify(payloadLines));
@@ -587,7 +651,6 @@ export default function PurchasesPage() {
           const body: Record<string, unknown> = {
             authorizedByPersonnelId: authorizerId,
             buyerPersonnelId: buyerId,
-            supplierId,
             status,
             notes: notes.trim() || null,
           };
@@ -604,7 +667,6 @@ export default function PurchasesPage() {
         const fd = new FormData();
         fd.append("authorizedByPersonnelId", authorizerId);
         fd.append("buyerPersonnelId", buyerId);
-        fd.append("supplierId", supplierId);
         fd.append("status", status);
         if (notes.trim()) {
           fd.append("notes", notes.trim());
@@ -623,7 +685,6 @@ export default function PurchasesPage() {
       setSubmitting(false);
     }
   }, [
-    supplierId,
     authorizerId,
     buyerId,
     status,
@@ -775,7 +836,7 @@ export default function PurchasesPage() {
         onHiding={closePopup}
         showTitle
         title={popupTitle}
-        width={940}
+        width={1280}
         height="auto"
         maxHeight="92vh"
         showCloseButton
@@ -788,53 +849,23 @@ export default function PurchasesPage() {
             </div>
           ) : null}
 
-          <div className="purchase-form__section-title">Supplier and workflow</div>
-          <div className="purchase-form__grid2">
-            <div className="purchase-form__field">
-              <span className="purchase-form__label">Supplier</span>
-              <div className="purchase-form__inline-add">
-                <div className="purchase-form__control">
-                  <SelectBox
-                    dataSource={supplierOptions}
-                    displayExpr="label"
-                    valueExpr="id"
-                    value={supplierId}
-                    onValueChanged={(e) => setSupplierId(e.value ?? null)}
-                    searchEnabled
-                    showDropDownButton
-                    showClearButton
-                    placeholder="Select supplier…"
-                    disabled={formDisabled}
-                  />
-                </div>
-                <Button
-                  icon="add"
-                  stylingMode="text"
-                  hint="Add supplier"
-                  disabled={formDisabled}
-                  onClick={() => setQuickSupplierOpen(true)}
-                />
-              </div>
-            </div>
-            <div className="purchase-form__field">
-              <span className="purchase-form__label">Status</span>
-              {statusHint(status) ? (
-                <p className="purchase-form__hint">{statusHint(status)}</p>
-              ) : null}
-              <div className="purchase-form__control">
-                <SelectBox
-                  dataSource={STATUS_OPTIONS}
-                  displayExpr="text"
-                  valueExpr="value"
-                  value={status}
-                  onValueChanged={(e) =>
-                    setStatus((e.value as "PENDING" | "COMPLETE" | "CANCELLED") ?? "PENDING")
-                  }
-                  searchEnabled
-                  showClearButton={false}
-                  disabled={formDisabled}
-                />
-              </div>
+          <div className="purchase-form__section-title">Workflow</div>
+          <div className="purchase-form__field" style={{ maxWidth: 400 }}>
+            <span className="purchase-form__label">Status</span>
+            {statusHint(status) ? <p className="purchase-form__hint">{statusHint(status)}</p> : null}
+            <div className="purchase-form__control">
+              <SelectBox
+                dataSource={STATUS_OPTIONS}
+                displayExpr="text"
+                valueExpr="value"
+                value={status}
+                onValueChanged={(e) =>
+                  setStatus((e.value as "PENDING" | "COMPLETE" | "CANCELLED") ?? "PENDING")
+                }
+                searchEnabled
+                showClearButton={false}
+                disabled={formDisabled}
+              />
             </div>
           </div>
 
@@ -956,14 +987,17 @@ export default function PurchasesPage() {
               </>
             ) : (
               <>
-                Per line, choose <strong>Stock</strong>, <strong>Personal bin</strong> (assignee), or{" "}
-                <strong>Site bin</strong> (location). Totals use quantity × unit price.
+                Per line, set <strong>Supplier</strong> and product, then <strong>Stock</strong>,{" "}
+                <strong>Personal bin</strong> (assignee), or <strong>Site bin</strong> (location). Totals use
+                quantity × unit price.
               </>
             )}
           </p>
           <div className="purchase-form__lines">
             <div className="purchase-form__lines-header" aria-hidden>
               <span>#</span>
+              <span>Supplier</span>
+              <span>Dept</span>
               <span>Product</span>
               <span>Receive</span>
               <span>Assignee / site</span>
@@ -975,6 +1009,48 @@ export default function PurchasesPage() {
             {lines.map((line, index) => (
               <div className="purchase-form__line-row" key={index}>
                 <span className="purchase-form__line-num">{index + 1}</span>
+                <div className="purchase-form__inline-add purchase-form__inline-add--line">
+                  <div className="purchase-form__control">
+                    <SelectBox
+                      dataSource={supplierOptions}
+                      displayExpr="label"
+                      valueExpr="id"
+                      value={line.supplierId}
+                      onValueChanged={(e) => updateLine(index, { supplierId: (e.value as string) ?? null })}
+                      searchEnabled
+                      showDropDownButton
+                      showClearButton
+                      placeholder="Supplier…"
+                      disabled={linesLocked}
+                    />
+                  </div>
+                  <Button
+                    icon="add"
+                    stylingMode="text"
+                    hint="Add supplier"
+                    disabled={linesLocked}
+                    onClick={() => {
+                      quickSupplierLineRef.current = index;
+                      setQuickSupplierOpen(true);
+                    }}
+                  />
+                </div>
+                <div className="purchase-form__control">
+                  <SelectBox
+                    dataSource={departmentOptions}
+                    displayExpr="label"
+                    valueExpr="id"
+                    value={line.departmentId}
+                    onValueChanged={(e) =>
+                      updateLine(index, { departmentId: (e.value as string) ?? null })
+                    }
+                    searchEnabled
+                    showDropDownButton
+                    showClearButton
+                    placeholder="Department…"
+                    disabled={linesLocked}
+                  />
+                </div>
                 <div className="purchase-form__inline-add purchase-form__inline-add--line">
                   <div className="purchase-form__control">
                     <SelectBox
@@ -1152,7 +1228,10 @@ export default function PurchasesPage() {
 
       <QuickAddSupplierPopup
         visible={quickSupplierOpen}
-        onClose={() => setQuickSupplierOpen(false)}
+        onClose={() => {
+          quickSupplierLineRef.current = null;
+          setQuickSupplierOpen(false);
+        }}
         onCreated={handleSupplierCreated}
       />
       <QuickAddProductPopup

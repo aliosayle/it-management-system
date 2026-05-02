@@ -2,6 +2,7 @@ export { default as HomePage } from "./home-page";
 export { default as UsersPage } from "./users-page";
 export { default as CompaniesPage } from "./companies-page";
 export { default as SitesPage } from "./sites-page";
+export { default as DepartmentsPage } from "./departments-page";
 export { default as PersonnelPage } from "./personnel-page";
 export { default as ProductsPage } from "./products-page";
 export { default as StockPage } from "./stock-page";
