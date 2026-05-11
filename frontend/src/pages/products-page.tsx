@@ -69,6 +69,9 @@ type PurchaseHistoryRow = {
   lineTotal: number;
 };
 
+/** Grid row: synthetic id for DataGrid keyExpr */
+type PurchaseHistoryGridRow = PurchaseHistoryRow & { id: string };
+
 type ProductPick = {
   id: string;
   sku: string;
@@ -98,7 +101,6 @@ function productPickFromRow(row: Record<string, unknown>): ProductPick {
 
 export default function ProductsPage() {
   const gridRef = useRef<DataGridRef>(null);
-  const statementGridRef = useRef<DataGridRef>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [personnelOptions, setPersonnelOptions] = useState<
     { id: string; label: string }[]
@@ -121,6 +123,12 @@ export default function ProductsPage() {
 
   const [statementOpen, setStatementOpen] = useState(false);
   const [statementProduct, setStatementProduct] = useState<ProductPick | null>(null);
+  const [statementMovements, setStatementMovements] = useState<MovementRow[] | null>(null);
+  const [statementPurchases, setStatementPurchases] = useState<PurchaseHistoryGridRow[] | null>(
+    null,
+  );
+  const [statementLoading, setStatementLoading] = useState(false);
+  const [statementError, setStatementError] = useState<string | null>(null);
 
   const loadAssignMeta = useCallback(async () => {
     const [pl, pr] = await Promise.all([
@@ -174,53 +182,44 @@ export default function ProductsPage() {
     [],
   );
 
-  const movementsStatementStore = useMemo(() => {
-    const pid = statementProduct?.id;
-    if (!pid) {
-      return new CustomStore({
-        key: "id",
-        load: () => Promise.resolve({ data: [], totalCount: 0 }),
-      });
-    }
-    return new CustomStore({
-      key: "id",
-      load: async () => {
-        const res = (await apiFetch(
-          `/api/products/${pid}/movements?skip=0&take=5000`,
-        )) as { items?: MovementRow[]; total?: number };
-        const items = Array.isArray(res?.items) ? res.items : [];
-        const total =
-          typeof res?.total === "number" && Number.isFinite(res.total)
-            ? res.total
-            : items.length;
-        return { data: items, totalCount: total };
-      },
-    });
-  }, [statementProduct?.id]);
-
-  const purchaseHistoryStatementStore = useMemo(() => {
-    const pid = statementProduct?.id;
-    if (!pid) {
-      return new CustomStore({
-        key: "id",
-        load: () => Promise.resolve({ data: [], totalCount: 0 }),
-      });
-    }
-    return new CustomStore({
-      key: "id",
-      load: async () => {
-        const res = (await apiFetch(
-          `/api/products/${pid}/purchase-history`,
-        )) as { items?: PurchaseHistoryRow[] };
-        const raw = Array.isArray(res?.items) ? res.items : [];
-        const data = raw.map((it, idx) => ({
+  const loadStatementData = useCallback(async (productId: string) => {
+    setStatementLoading(true);
+    setStatementError(null);
+    setStatementMovements(null);
+    setStatementPurchases(null);
+    try {
+      const [movRes, purRes] = await Promise.all([
+        apiFetch(`/api/products/${productId}/movements?skip=0&take=5000`) as Promise<{
+          items?: MovementRow[];
+        }>,
+        apiFetch(`/api/products/${productId}/purchase-history`) as Promise<{
+          items?: PurchaseHistoryRow[];
+        }>,
+      ]);
+      const movItems = Array.isArray(movRes?.items) ? movRes.items : [];
+      const purRaw = Array.isArray(purRes?.items) ? purRes.items : [];
+      setStatementMovements(movItems);
+      setStatementPurchases(
+        purRaw.map((it, idx) => ({
           ...it,
           id: `${it.purchaseId}-${idx}`,
-        }));
-        return { data, totalCount: data.length };
-      },
-    });
-  }, [statementProduct?.id]);
+        })),
+      );
+    } catch (e: unknown) {
+      setStatementError(getErrorMessage(e, "Failed to load product statement"));
+      setStatementMovements([]);
+      setStatementPurchases([]);
+    } finally {
+      setStatementLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!statementOpen || !statementProduct?.id) {
+      return;
+    }
+    void loadStatementData(statementProduct.id);
+  }, [statementOpen, statementProduct?.id, loadStatementData]);
 
   const onAssignFieldChanged = useCallback((e: FormTypes.FieldDataChangedEvent) => {
     const { dataField, value } = e;
@@ -267,6 +266,10 @@ export default function ProductsPage() {
 
   const openStatementForRow = useCallback((row: Record<string, unknown>) => {
     setStatementProduct(productPickFromRow(row));
+    setStatementMovements(null);
+    setStatementPurchases(null);
+    setStatementError(null);
+    setStatementLoading(true);
     setStatementOpen(true);
   }, []);
 
@@ -283,10 +286,13 @@ export default function ProductsPage() {
       return;
     }
     try {
+      const productId = movementProduct.id;
+      const reloadStatementForProduct =
+        statementOpen && statementProduct?.id === productId ? productId : null;
       await apiFetch("/api/stock/movements", {
         method: "POST",
         body: JSON.stringify({
-          productId: movementProduct.id,
+          productId,
           type: movementForm.type,
           quantity: movementForm.quantity,
           note: movementForm.note.trim() || null,
@@ -297,11 +303,13 @@ export default function ProductsPage() {
       setMovementProduct(null);
       setMovementForm({ type: null, quantity: 1, note: "" });
       gridRef.current?.instance().refresh();
-      statementGridRef.current?.instance().refresh();
+      if (reloadStatementForProduct) {
+        void loadStatementData(reloadStatementForProduct);
+      }
     } catch (e: unknown) {
       notify(getErrorMessage(e, "Failed to save movement"), "error", 5000);
     }
-  }, [movementProduct, movementForm]);
+  }, [movementProduct, movementForm, statementOpen, statementProduct?.id, loadStatementData]);
 
   const submitAssign = useCallback(async () => {
     const { personnelId, productId, quantity, note } = assignForm;
@@ -405,6 +413,127 @@ export default function ProductsPage() {
       submitMovementForProduct,
     ],
   );
+
+  const renderStatementPopupContent = useCallback(() => {
+    if (!statementProduct) {
+      return <div style={{ minHeight: 80 }} />;
+    }
+
+    const movements = statementMovements ?? [];
+    const purchases = statementPurchases ?? [];
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          width: "100%",
+          minHeight: 520,
+          padding: "4px 0",
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ flexShrink: 0 }}>
+          <StockMovementProductSummary
+            sku={statementProduct.sku}
+            name={statementProduct.name}
+            quantityOnHand={statementProduct.quantityOnHand}
+            description={statementProduct.description}
+          />
+        </div>
+        {statementError ? (
+          <div style={{ color: "var(--dx-color-danger, #d13438)", fontSize: 13 }}>
+            {statementError}
+          </div>
+        ) : null}
+        {statementLoading ? (
+          <div style={{ fontSize: 13, opacity: 0.85 }}>Loading statement…</div>
+        ) : null}
+        <div style={{ fontWeight: 600, fontSize: 13 }}>Warehouse stock movements</div>
+        <div style={{ height: 260, minHeight: 200 }}>
+          <AppDataGrid
+            key={`m-${statementProduct.id}`}
+            keyExpr="id"
+            className="stock-movements-grid"
+            dataSource={movements}
+            remoteOperations={false}
+            height="100%"
+            showAddRowButton={false}
+            onDataErrorOccurred={(e) => {
+              notify(getDataGridErrorMessage(e), "error", 5000);
+            }}
+          >
+            <FilterRow visible />
+            <Column dataField="createdAt" dataType="datetime" caption="When" />
+            <Column
+              dataField="type"
+              caption="Type"
+              width={200}
+              calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
+            />
+            <Column dataField="quantity" dataType="number" />
+            <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
+            <Column dataField="note" />
+            <Column
+              caption="User"
+              calculateCellValue={(row: MovementRow) =>
+                row.user?.displayName || row.user?.email || ""
+              }
+            />
+            <Paging defaultPageSize={20} />
+            <Pager showPageSizeSelector showInfo />
+          </AppDataGrid>
+        </div>
+        <div style={{ fontWeight: 600, fontSize: 13 }}>
+          Completed purchases (unit price history)
+        </div>
+        <div style={{ height: 260, minHeight: 200 }}>
+          <AppDataGrid
+            key={`p-${statementProduct.id}`}
+            keyExpr="id"
+            dataSource={purchases}
+            remoteOperations={false}
+            height="100%"
+            showAddRowButton={false}
+            onDataErrorOccurred={(e) => {
+              notify(getDataGridErrorMessage(e), "error", 5000);
+            }}
+          >
+            <FilterRow visible />
+            <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
+            <Column dataField="supplierName" caption="Supplier" width={160} />
+            <Column dataField="quantity" dataType="number" width={80} />
+            <Column dataField="unitPrice" caption="Unit price" dataType="number" format="#,##0.00" />
+            <Column dataField="lineTotal" caption="Line total" dataType="number" format="#,##0.00" />
+            <Column
+              dataField="destination"
+              caption="Dest"
+              width={72}
+              calculateCellValue={(row: PurchaseHistoryGridRow) => {
+                const d = row.lineDestination ?? row.destination;
+                if (d === "STOCK") return "Stock";
+                if (d === "PERSONNEL_BIN") return "Bin";
+                if (d === "SITE_BIN") return "Site";
+                if (d === "DEPARTMENT") return "Dept";
+                if (d === "MIXED") return "Mixed";
+                return d;
+              }}
+            />
+            <Column dataField="bonOriginalName" caption="Bon" width={120} />
+            <Paging defaultPageSize={20} />
+            <Pager showPageSizeSelector showInfo />
+          </AppDataGrid>
+        </div>
+      </div>
+    );
+  }, [
+    statementProduct,
+    statementMovements,
+    statementPurchases,
+    statementLoading,
+    statementError,
+  ]);
 
   return (
     <div className="content-block content-block--fill">
@@ -591,6 +720,10 @@ export default function ProductsPage() {
         onHiding={() => {
           setStatementOpen(false);
           setStatementProduct(null);
+          setStatementMovements(null);
+          setStatementPurchases(null);
+          setStatementError(null);
+          setStatementLoading(false);
         }}
         showTitle
         title={
@@ -601,104 +734,8 @@ export default function ProductsPage() {
         width={1080}
         height={680}
         showCloseButton
-      >
-        {statementProduct ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              height: 560,
-              minHeight: 0,
-            }}
-          >
-            <div style={{ flexShrink: 0 }}>
-              <StockMovementProductSummary
-                sku={statementProduct.sku}
-                name={statementProduct.name}
-                quantityOnHand={statementProduct.quantityOnHand}
-                description={statementProduct.description}
-              />
-            </div>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>Warehouse stock movements</div>
-            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-              <AppDataGrid
-                ref={statementGridRef}
-                key={`m-${statementProduct.id}`}
-                keyExpr="id"
-                className="stock-movements-grid"
-                dataSource={movementsStatementStore}
-                remoteOperations={false}
-                height="100%"
-                showAddRowButton={false}
-                onDataErrorOccurred={(e) => {
-                  notify(getDataGridErrorMessage(e), "error", 5000);
-                }}
-              >
-                <FilterRow visible />
-                <Column dataField="createdAt" dataType="datetime" caption="When" />
-                <Column
-                  dataField="type"
-                  caption="Type"
-                  width={200}
-                  calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
-                />
-                <Column dataField="quantity" dataType="number" />
-                <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
-                <Column dataField="note" />
-                <Column
-                  caption="User"
-                  calculateCellValue={(row: MovementRow) =>
-                    row.user?.displayName || row.user?.email || ""
-                  }
-                />
-                <Paging defaultPageSize={20} />
-                <Pager showPageSizeSelector showInfo />
-              </AppDataGrid>
-            </div>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>
-              Completed purchases (unit price history)
-            </div>
-            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-              <AppDataGrid
-                key={`p-${statementProduct.id}`}
-                keyExpr="id"
-                dataSource={purchaseHistoryStatementStore}
-                remoteOperations={false}
-                height="100%"
-                showAddRowButton={false}
-                onDataErrorOccurred={(e) => {
-                  notify(getDataGridErrorMessage(e), "error", 5000);
-                }}
-              >
-                <FilterRow visible />
-                <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
-                <Column dataField="supplierName" caption="Supplier" width={160} />
-                <Column dataField="quantity" dataType="number" width={80} />
-                <Column dataField="unitPrice" caption="Unit price" dataType="number" format="#,##0.00" />
-                <Column dataField="lineTotal" caption="Line total" dataType="number" format="#,##0.00" />
-                <Column
-                  dataField="destination"
-                  caption="Dest"
-                  width={72}
-                  calculateCellValue={(row: PurchaseHistoryRow) => {
-                    const d = row.lineDestination ?? row.destination;
-                    if (d === "STOCK") return "Stock";
-                    if (d === "PERSONNEL_BIN") return "Bin";
-                    if (d === "SITE_BIN") return "Site";
-                    if (d === "DEPARTMENT") return "Dept";
-                    if (d === "MIXED") return "Mixed";
-                    return d;
-                  }}
-                />
-                <Column dataField="bonOriginalName" caption="Bon" width={120} />
-                <Paging defaultPageSize={20} />
-                <Pager showPageSizeSelector showInfo />
-              </AppDataGrid>
-            </div>
-          </div>
-        ) : null}
-      </PopupDx>
+        contentRender={renderStatementPopupContent}
+      />
     </div>
   );
 }
