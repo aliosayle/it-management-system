@@ -187,8 +187,13 @@ export default function ProductsPage() {
       load: async () => {
         const res = (await apiFetch(
           `/api/products/${pid}/movements?skip=0&take=5000`,
-        )) as { items: MovementRow[] };
-        return { data: res.items, totalCount: res.items.length };
+        )) as { items?: MovementRow[]; total?: number };
+        const items = Array.isArray(res?.items) ? res.items : [];
+        const total =
+          typeof res?.total === "number" && Number.isFinite(res.total)
+            ? res.total
+            : items.length;
+        return { data: items, totalCount: total };
       },
     });
   }, [statementProduct?.id]);
@@ -206,8 +211,9 @@ export default function ProductsPage() {
       load: async () => {
         const res = (await apiFetch(
           `/api/products/${pid}/purchase-history`,
-        )) as { items: PurchaseHistoryRow[] };
-        const data = res.items.map((it, idx) => ({
+        )) as { items?: PurchaseHistoryRow[] };
+        const raw = Array.isArray(res?.items) ? res.items : [];
+        const data = raw.map((it, idx) => ({
           ...it,
           id: `${it.purchaseId}-${idx}`,
         }));
@@ -398,107 +404,6 @@ export default function ProductsPage() {
       onMovementFieldChanged,
       submitMovementForProduct,
     ],
-  );
-
-  const renderStatementPopupContent = useCallback(
-    () =>
-      statementProduct ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            height: 560,
-            minHeight: 0,
-          }}
-        >
-          <div style={{ flexShrink: 0 }}>
-            <StockMovementProductSummary
-              sku={statementProduct.sku}
-              name={statementProduct.name}
-              quantityOnHand={statementProduct.quantityOnHand}
-              description={statementProduct.description}
-            />
-          </div>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>Warehouse stock movements</div>
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            <AppDataGrid
-              ref={statementGridRef}
-              key={`m-${statementProduct.id}`}
-              keyExpr="id"
-              className="stock-movements-grid"
-              persistenceKey={`itm-product-statement-${statementProduct.id}`}
-              dataSource={movementsStatementStore}
-              height="100%"
-              showAddRowButton={false}
-              onDataErrorOccurred={(e) => {
-                notify(getDataGridErrorMessage(e), "error", 5000);
-              }}
-            >
-              <FilterRow visible />
-              <Column dataField="createdAt" dataType="datetime" caption="When" />
-              <Column
-                dataField="type"
-                caption="Type"
-                width={200}
-                calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
-              />
-              <Column dataField="quantity" dataType="number" />
-              <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
-              <Column dataField="note" />
-              <Column
-                caption="User"
-                calculateCellValue={(row: MovementRow) =>
-                  row.user?.displayName || row.user?.email || ""
-                }
-              />
-              <Paging defaultPageSize={20} />
-              <Pager showPageSizeSelector showInfo />
-            </AppDataGrid>
-          </div>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>
-            Completed purchases (unit price history)
-          </div>
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            <AppDataGrid
-              key={`p-${statementProduct.id}`}
-              keyExpr="id"
-              persistenceKey={`itm-product-purchase-history-${statementProduct.id}`}
-              dataSource={purchaseHistoryStatementStore}
-              height="100%"
-              showAddRowButton={false}
-              onDataErrorOccurred={(e) => {
-                notify(getDataGridErrorMessage(e), "error", 5000);
-              }}
-            >
-              <FilterRow visible />
-              <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
-              <Column dataField="supplierName" caption="Supplier" width={160} />
-              <Column dataField="quantity" dataType="number" width={80} />
-              <Column dataField="unitPrice" caption="Unit price" dataType="number" format="#,##0.00" />
-              <Column dataField="lineTotal" caption="Line total" dataType="number" format="#,##0.00" />
-              <Column
-                dataField="destination"
-                caption="Dest"
-                width={72}
-                calculateCellValue={(row: PurchaseHistoryRow) => {
-                  const d = row.lineDestination ?? row.destination;
-                  if (d === "STOCK") return "Stock";
-                  if (d === "PERSONNEL_BIN") return "Bin";
-                  if (d === "SITE_BIN") return "Site";
-                  if (d === "DEPARTMENT") return "Dept";
-                  if (d === "MIXED") return "Mixed";
-                  return d;
-                }}
-              />
-              <Column dataField="bonOriginalName" caption="Bon" width={120} />
-              <Paging defaultPageSize={20} />
-              <Pager showPageSizeSelector showInfo />
-            </AppDataGrid>
-          </div>
-        </div>
-      ) : null,
-    [statementProduct, movementsStatementStore, purchaseHistoryStatementStore],
   );
 
   return (
@@ -696,8 +601,104 @@ export default function ProductsPage() {
         width={1080}
         height={680}
         showCloseButton
-        contentRender={renderStatementPopupContent}
-      />
+      >
+        {statementProduct ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              height: 560,
+              minHeight: 0,
+            }}
+          >
+            <div style={{ flexShrink: 0 }}>
+              <StockMovementProductSummary
+                sku={statementProduct.sku}
+                name={statementProduct.name}
+                quantityOnHand={statementProduct.quantityOnHand}
+                description={statementProduct.description}
+              />
+            </div>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>Warehouse stock movements</div>
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+              <AppDataGrid
+                ref={statementGridRef}
+                key={`m-${statementProduct.id}`}
+                keyExpr="id"
+                className="stock-movements-grid"
+                dataSource={movementsStatementStore}
+                remoteOperations={false}
+                height="100%"
+                showAddRowButton={false}
+                onDataErrorOccurred={(e) => {
+                  notify(getDataGridErrorMessage(e), "error", 5000);
+                }}
+              >
+                <FilterRow visible />
+                <Column dataField="createdAt" dataType="datetime" caption="When" />
+                <Column
+                  dataField="type"
+                  caption="Type"
+                  width={200}
+                  calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
+                />
+                <Column dataField="quantity" dataType="number" />
+                <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
+                <Column dataField="note" />
+                <Column
+                  caption="User"
+                  calculateCellValue={(row: MovementRow) =>
+                    row.user?.displayName || row.user?.email || ""
+                  }
+                />
+                <Paging defaultPageSize={20} />
+                <Pager showPageSizeSelector showInfo />
+              </AppDataGrid>
+            </div>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>
+              Completed purchases (unit price history)
+            </div>
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+              <AppDataGrid
+                key={`p-${statementProduct.id}`}
+                keyExpr="id"
+                dataSource={purchaseHistoryStatementStore}
+                remoteOperations={false}
+                height="100%"
+                showAddRowButton={false}
+                onDataErrorOccurred={(e) => {
+                  notify(getDataGridErrorMessage(e), "error", 5000);
+                }}
+              >
+                <FilterRow visible />
+                <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
+                <Column dataField="supplierName" caption="Supplier" width={160} />
+                <Column dataField="quantity" dataType="number" width={80} />
+                <Column dataField="unitPrice" caption="Unit price" dataType="number" format="#,##0.00" />
+                <Column dataField="lineTotal" caption="Line total" dataType="number" format="#,##0.00" />
+                <Column
+                  dataField="destination"
+                  caption="Dest"
+                  width={72}
+                  calculateCellValue={(row: PurchaseHistoryRow) => {
+                    const d = row.lineDestination ?? row.destination;
+                    if (d === "STOCK") return "Stock";
+                    if (d === "PERSONNEL_BIN") return "Bin";
+                    if (d === "SITE_BIN") return "Site";
+                    if (d === "DEPARTMENT") return "Dept";
+                    if (d === "MIXED") return "Mixed";
+                    return d;
+                  }}
+                />
+                <Column dataField="bonOriginalName" caption="Bon" width={120} />
+                <Paging defaultPageSize={20} />
+                <Pager showPageSizeSelector showInfo />
+              </AppDataGrid>
+            </div>
+          </div>
+        ) : null}
+      </PopupDx>
     </div>
   );
 }
