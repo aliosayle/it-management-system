@@ -875,7 +875,7 @@ export default function PurchasesPage() {
       <div className="page-grid-body">
         <AppDataGrid
           key={gridRefresh}
-          persistenceKey="itm-grid-purchases-v7"
+          persistenceKey="itm-grid-purchases-v8"
           dataSource={dataSource}
           repaintChangesOnly
           height="100%"
@@ -919,7 +919,7 @@ export default function PurchasesPage() {
             width={92}
           />
           <Column dataField="createdByName" caption="Recorded by" width={96} minWidth={72} />
-          <Column type="buttons" width={118}>
+          <Column type="buttons" width={118} allowResizing={false}>
             <ColumnButton
               hint="Edit"
               icon="edit"

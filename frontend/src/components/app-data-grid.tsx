@@ -8,7 +8,7 @@ import DataGrid, {
 } from "devextreme-react/data-grid";
 
 export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
-  /** When set, column order / width / filters persist in localStorage */
+  /** When set, column order, widths (with resizing), filters, etc. persist in localStorage */
   persistenceKey?: string;
   /** Toolbar search box width (default 360) */
   searchPanelWidth?: number;
@@ -32,6 +32,8 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       columnAutoWidth,
       width,
       allowColumnReordering,
+      allowColumnResizing,
+      columnResizingMode,
       columnMinWidth,
       persistenceKey,
       searchPanelWidth,
@@ -82,6 +84,8 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         columnMinWidth={columnMinWidth ?? 64}
         width={width ?? "100%"}
         allowColumnReordering={allowColumnReordering ?? true}
+        allowColumnResizing={allowColumnResizing ?? true}
+        columnResizingMode={columnResizingMode ?? "widget"}
         searchPanel={searchPanel}
         export={exportOpts}
         columnChooser={columnChooserOpts}
