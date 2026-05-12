@@ -308,7 +308,10 @@ function purchaseListItem(p: {
   lines: {
     quantity: Prisma.Decimal;
     unitPrice: Prisma.Decimal;
+    destination: PurchaseDestination;
+    lineIndex: number;
     supplier: { name: string };
+    product: { sku: string; name: string };
   }[];
 }) {
   const supplierLabels = [...new Set(p.lines.map((l) => l.supplier.name))];
@@ -346,6 +349,15 @@ function purchaseListItem(p: {
     createdByName: p.createdBy.displayName,
     lineCount: p._count.lines,
     totalAmount,
+    lineItems: p.lines.map((l) => ({
+      sku: l.product.sku,
+      productName: l.product.name,
+      supplierName: l.supplier.name,
+      quantity: Number(l.quantity),
+      unitPrice: Number(l.unitPrice),
+      lineTotal: Number(l.quantity) * Number(l.unitPrice),
+      destination: l.destination,
+    })),
   };
 }
 
@@ -361,10 +373,14 @@ router.get("/", async (_req, res) => {
       createdBy: { select: { displayName: true, email: true } },
       _count: { select: { lines: true } },
       lines: {
+        orderBy: { lineIndex: "asc" },
         select: {
           quantity: true,
           unitPrice: true,
+          destination: true,
+          lineIndex: true,
           supplier: { select: { name: true } },
+          product: { select: { sku: true, name: true } },
         },
       },
     },

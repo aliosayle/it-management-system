@@ -23,7 +23,7 @@ import Form, {
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
 import { StockMovementProductSummary } from "../components/stock-movement-product-summary";
-import { apiFetch } from "../api/client";
+import { apiFetch, apiFetchBlob } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 import type { ProductOption } from "../components/personnel-bin-popup";
 import {
@@ -60,6 +60,7 @@ type PurchaseHistoryRow = {
   createdAt: string;
   destination: string;
   lineDestination?: string;
+  receivedWhere?: string;
   status: string;
   supplierId: string;
   supplierName: string;
@@ -171,6 +172,9 @@ export default function ProductsPage() {
         update: (key, values) => {
           const payload = { ...(values as Record<string, unknown>) };
           delete payload.id;
+          delete payload.quantityOnHand;
+          delete payload.lastPurchaseUnitPrice;
+          delete payload.averagePurchaseUnitPrice;
           return apiFetch(`/api/products/${key}`, {
             method: "PATCH",
             body: JSON.stringify(payload),
@@ -271,6 +275,23 @@ export default function ProductsPage() {
     setStatementError(null);
     setStatementLoading(true);
     setStatementOpen(true);
+  }, []);
+
+  const downloadStatementBon = useCallback(async (row: PurchaseHistoryGridRow) => {
+    if (!row.purchaseId || !row.bonOriginalName) {
+      return;
+    }
+    try {
+      const blob = await apiFetchBlob(`/api/purchases/${row.purchaseId}/bon`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = row.bonOriginalName || "bon";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      notify(getErrorMessage(e, "Download failed"), "error", 5000);
+    }
   }, []);
 
   const submitMovementForProduct = useCallback(async () => {
@@ -507,20 +528,51 @@ export default function ProductsPage() {
             <Column dataField="unitPrice" caption="Unit price" dataType="number" format="#,##0.00" />
             <Column dataField="lineTotal" caption="Line total" dataType="number" format="#,##0.00" />
             <Column
-              dataField="destination"
-              caption="Dest"
-              width={72}
-              calculateCellValue={(row: PurchaseHistoryGridRow) => {
-                const d = row.lineDestination ?? row.destination;
-                if (d === "STOCK") return "Stock";
-                if (d === "PERSONNEL_BIN") return "Bin";
-                if (d === "SITE_BIN") return "Site";
-                if (d === "DEPARTMENT") return "Dept";
-                if (d === "MIXED") return "Mixed";
-                return d;
+              dataField="receivedWhere"
+              caption="Received at"
+              width={220}
+              calculateCellValue={(row: PurchaseHistoryGridRow) =>
+                row.receivedWhere ||
+                row.lineDestination ||
+                row.destination ||
+                "—"
+              }
+            />
+            <Column
+              dataField="bonOriginalName"
+              caption="Bon (click to download)"
+              width={200}
+              cellRender={(cell) => {
+                const row = cell.data as PurchaseHistoryGridRow | undefined;
+                const name = row?.bonOriginalName?.trim();
+                if (!name || !row?.purchaseId) {
+                  return <span style={{ opacity: 0.55 }}>—</span>;
+                }
+                return (
+                  <button
+                    type="button"
+                    className="dx-link"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      font: "inherit",
+                      color: "var(--dx-color-link, #0f548c)",
+                      textDecoration: "underline",
+                    }}
+                    onClick={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      void downloadStatementBon(row);
+                    }}
+                  >
+                    {name}
+                  </button>
+                );
               }}
             />
-            <Column dataField="bonOriginalName" caption="Bon" width={120} />
             <Paging defaultPageSize={20} />
             <Pager showPageSizeSelector showInfo />
           </AppDataGrid>
@@ -533,6 +585,7 @@ export default function ProductsPage() {
     statementPurchases,
     statementLoading,
     statementError,
+    downloadStatementBon,
   ]);
 
   return (
@@ -545,7 +598,7 @@ export default function ProductsPage() {
         <AppDataGrid
           ref={gridRef}
           keyExpr="id"
-          persistenceKey="itm-grid-products-v2"
+          persistenceKey="itm-grid-products-v3"
           dataSource={dataSource}
           repaintChangesOnly
           focusedRowEnabled
@@ -587,9 +640,34 @@ export default function ProductsPage() {
           <RequiredRule />
         </Column>
         <Column dataField="description" formItem={{ colSpan: 2 }} />
-        <Column dataField="quantityOnHand" caption="Qty on hand" dataType="number">
-          <RequiredRule />
-        </Column>
+        <Column
+          dataField="quantityOnHand"
+          caption="Qty on hand"
+          dataType="number"
+          allowEditing={false}
+          formItem={{
+            editorOptions: { readOnly: true },
+            helpText: "Updated from stock movements and completed purchases.",
+          }}
+        />
+        <Column
+          dataField="lastPurchaseUnitPrice"
+          caption="Last purchase price"
+          dataType="number"
+          format="#,##0.00"
+          allowEditing={false}
+          allowSorting
+          formItem={{ visible: false }}
+        />
+        <Column
+          dataField="averagePurchaseUnitPrice"
+          caption="Avg purchase price"
+          dataType="number"
+          format="#,##0.00"
+          allowEditing={false}
+          allowSorting
+          formItem={{ visible: false }}
+        />
         <Column
           dataField="createdAt"
           dataType="datetime"

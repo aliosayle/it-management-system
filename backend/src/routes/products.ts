@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Prisma, PurchaseStatus } from "@prisma/client";
+import { Prisma, PurchaseDestination, PurchaseStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { movementJson } from "../lib/movement-format.js";
@@ -22,7 +22,6 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   category: z.string().max(128).optional(),
   description: z.string().optional().nullable(),
-  quantityOnHand: z.number().nonnegative().optional(),
 });
 
 function productJson(p: {
@@ -41,9 +40,86 @@ function productJson(p: {
   };
 }
 
+function lineReceivedWhereLabel(r: {
+  destination: PurchaseDestination;
+  targetPersonnel: { firstName: string; lastName: string } | null;
+  targetSite: { name: string; company: { name: string } } | null;
+  department: {
+    name: string;
+    site: { name: string; company: { name: string } };
+  } | null;
+}): string {
+  switch (r.destination) {
+    case PurchaseDestination.STOCK:
+      return "Warehouse (depot)";
+    case PurchaseDestination.PERSONNEL_BIN: {
+      const p = r.targetPersonnel;
+      const name = p ? `${p.firstName} ${p.lastName}`.trim() : "";
+      return name ? `Personal bin · ${name}` : "Personal bin";
+    }
+    case PurchaseDestination.SITE_BIN: {
+      const s = r.targetSite;
+      return s ? `Site bin · ${s.company.name} / ${s.name}` : "Site bin";
+    }
+    case PurchaseDestination.DEPARTMENT: {
+      const d = r.department;
+      if (!d) return "Department";
+      return `Department · ${d.site.company.name} / ${d.site.name} — ${d.name}`;
+    }
+    default:
+      return String(r.destination);
+  }
+}
+
 router.get("/", async (_req, res) => {
   const list = await prisma.product.findMany({ orderBy: { sku: "asc" } });
-  res.json(list.map(productJson));
+  const ids = list.map((p) => p.id);
+  if (ids.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const lines = await prisma.purchaseLine.findMany({
+    where: {
+      productId: { in: ids },
+      purchase: { status: PurchaseStatus.COMPLETE },
+    },
+    orderBy: [{ purchase: { createdAt: "desc" } }, { lineIndex: "desc" }],
+    select: {
+      productId: true,
+      quantity: true,
+      unitPrice: true,
+      purchase: { select: { createdAt: true } },
+    },
+  });
+
+  const lastUnitByProduct = new Map<string, number>();
+  const aggByProduct = new Map<string, { sumQty: number; sumQtyPx: number }>();
+  for (const l of lines) {
+    if (!lastUnitByProduct.has(l.productId)) {
+      lastUnitByProduct.set(l.productId, Number(l.unitPrice));
+    }
+    const qty = Number(l.quantity);
+    const px = Number(l.unitPrice);
+    const cur = aggByProduct.get(l.productId) ?? { sumQty: 0, sumQtyPx: 0 };
+    cur.sumQty += qty;
+    cur.sumQtyPx += qty * px;
+    aggByProduct.set(l.productId, cur);
+  }
+
+  res.json(
+    list.map((p) => {
+      const base = productJson(p);
+      const agg = aggByProduct.get(p.id);
+      const lastPx = lastUnitByProduct.get(p.id);
+      return {
+        ...base,
+        lastPurchaseUnitPrice: lastPx !== undefined ? lastPx : null,
+        averagePurchaseUnitPrice:
+          agg && agg.sumQty > 0 ? agg.sumQtyPx / agg.sumQty : null,
+      };
+    }),
+  );
 });
 
 /** Product stock statement (movement history). */
@@ -113,6 +189,13 @@ router.get("/:id/purchase-history", async (req, res) => {
         },
       },
       supplier: { select: { id: true, name: true } },
+      targetPersonnel: { select: { firstName: true, lastName: true } },
+      targetSite: { include: { company: { select: { name: true } } } },
+      department: {
+        include: {
+          site: { include: { company: { select: { name: true } } } },
+        },
+      },
     },
   });
 
@@ -122,6 +205,12 @@ router.get("/:id/purchase-history", async (req, res) => {
       createdAt: r.purchase.createdAt,
       destination: r.purchase.destination,
       lineDestination: r.destination,
+      receivedWhere: lineReceivedWhereLabel({
+        destination: r.destination,
+        targetPersonnel: r.targetPersonnel,
+        targetSite: r.targetSite,
+        department: r.department,
+      }),
       status: r.purchase.status,
       supplierId: r.supplier.id,
       supplierName: r.supplier.name,
@@ -179,14 +268,12 @@ router.patch("/:id", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { sku, name, category, description, quantityOnHand } = parsed.data;
+  const { sku, name, category, description } = parsed.data;
   const data: Prisma.ProductUpdateInput = {};
   if (sku !== undefined) data.sku = sku;
   if (name !== undefined) data.name = name;
   if (category !== undefined) data.category = category.trim();
   if (description !== undefined) data.description = description;
-  if (quantityOnHand !== undefined)
-    data.quantityOnHand = new Prisma.Decimal(quantityOnHand);
 
   try {
     const p = await prisma.product.update({

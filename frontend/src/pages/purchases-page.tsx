@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import CustomStore from "devextreme/data/custom_store";
 import {
   Column,
@@ -7,6 +7,7 @@ import {
   FilterRow,
   ColumnButton,
   Item as GridToolbarItem,
+  MasterDetail,
 } from "devextreme-react/data-grid";
 import Button from "devextreme-react/button";
 import Popup from "devextreme-react/popup";
@@ -41,6 +42,16 @@ type SupplierRow = { id: string; name: string };
 
 type DepartmentRow = { id: string; label: string; siteLabel: string; name: string; siteId: string };
 
+type PurchaseLineSummary = {
+  sku: string;
+  productName: string;
+  supplierName: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  destination: string;
+};
+
 type PurchaseListRow = {
   id: string;
   status: string;
@@ -53,7 +64,79 @@ type PurchaseListRow = {
   createdByName: string;
   lineCount: number;
   totalAmount: number;
+  lineItems?: PurchaseLineSummary[];
 };
+
+function lineDestinationLabel(dest: string): string {
+  if (dest === "STOCK") return "Warehouse (depot)";
+  if (dest === "PERSONNEL_BIN") return "Personal bin";
+  if (dest === "SITE_BIN") return "Site bin";
+  if (dest === "DEPARTMENT") return "Department";
+  return dest;
+}
+
+function renderPurchaseLinesDetail(detail: { data?: PurchaseListRow } | PurchaseListRow) {
+  const row =
+    detail && typeof detail === "object" && "data" in detail
+      ? (detail as { data?: PurchaseListRow }).data
+      : (detail as PurchaseListRow);
+  if (!row) {
+    return null;
+  }
+  const items = row.lineItems ?? [];
+  const th: CSSProperties = {
+    textAlign: "left",
+    padding: "6px 8px",
+    borderBottom: "1px solid #e0e0e0",
+    fontWeight: 600,
+  };
+  const td: CSSProperties = { padding: "6px 8px", borderBottom: "1px solid #f0f0f0" };
+  return (
+    <div style={{ padding: "12px 16px 16px" }}>
+      <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Products on this purchase</div>
+      {items.length === 0 ? (
+        <span style={{ opacity: 0.7 }}>No line items.</span>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={th}>SKU</th>
+              <th style={th}>Product</th>
+              <th style={th}>Supplier</th>
+              <th style={{ ...th, textAlign: "right" }}>Qty</th>
+              <th style={{ ...th, textAlign: "right" }}>Unit price</th>
+              <th style={{ ...th, textAlign: "right" }}>Line total</th>
+              <th style={th}>Destination</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((line, i) => (
+              <tr key={`${row.id}-line-${i}`}>
+                <td style={td}>{line.sku}</td>
+                <td style={td}>{line.productName}</td>
+                <td style={td}>{line.supplierName}</td>
+                <td style={{ ...td, textAlign: "right" }}>{line.quantity}</td>
+                <td style={{ ...td, textAlign: "right" }}>
+                  {Number(line.unitPrice).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 4,
+                  })}
+                </td>
+                <td style={{ ...td, textAlign: "right" }}>
+                  {Number(line.lineTotal).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </td>
+                <td style={td}>{lineDestinationLabel(line.destination)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
 
 type PurchaseDetailLine = {
   id: string;
@@ -792,7 +875,7 @@ export default function PurchasesPage() {
       <div className="page-grid-body">
         <AppDataGrid
           key={gridRefresh}
-          persistenceKey="itm-grid-purchases-v4"
+          persistenceKey="itm-grid-purchases-v5"
           dataSource={dataSource}
           repaintChangesOnly
           height="100%"
@@ -814,6 +897,7 @@ export default function PurchasesPage() {
             notify(getDataGridErrorMessage(e), "error", 5000);
           }}
         >
+          <MasterDetail enabled render={renderPurchaseLinesDetail} />
           <FilterRow visible />
           <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
           <Column
