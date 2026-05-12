@@ -875,10 +875,11 @@ export default function PurchasesPage() {
       <div className="page-grid-body">
         <AppDataGrid
           key={gridRefresh}
-          persistenceKey="itm-grid-purchases-v6"
+          persistenceKey="itm-grid-purchases-v7"
           dataSource={dataSource}
           repaintChangesOnly
           height="100%"
+          columnAutoWidth={false}
           showAddRowButton={false}
           toolbarItems={
             <GridToolbarItem
@@ -899,26 +900,26 @@ export default function PurchasesPage() {
         >
           <MasterDetail enabled render={renderPurchaseLinesDetail} />
           <FilterRow visible />
-          <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
+          <Column dataField="createdAt" dataType="datetime" caption="When" width={132} />
           <Column
             dataField="status"
             caption="Status"
-            width={96}
+            width={88}
             calculateCellValue={(row: PurchaseListRow) => statusLabel(row.status)}
           />
-          <Column dataField="supplierName" caption="Supplier" width={140} />
-          <Column dataField="authorizedByName" caption="Authorized by" width={120} />
-          <Column dataField="buyerName" caption="Buyer" width={120} />
-          <Column dataField="lineCount" caption="#" width={44} dataType="number" />
+          <Column dataField="supplierName" caption="Supplier" width={168} minWidth={120} />
+          <Column dataField="authorizedByName" caption="Authorized by" width={112} minWidth={88} />
+          <Column dataField="buyerName" caption="Buyer" width={112} minWidth={88} />
+          <Column dataField="lineCount" caption="#" width={40} dataType="number" />
           <Column
             dataField="totalAmount"
             caption="Total"
             dataType="number"
             format="#,##0.00"
-            width={100}
+            width={92}
           />
-          <Column dataField="createdByName" caption="Recorded by" width={120} />
-          <Column type="buttons" width={132}>
+          <Column dataField="createdByName" caption="Recorded by" width={96} minWidth={72} />
+          <Column type="buttons" width={118}>
             <ColumnButton
               hint="Edit"
               icon="edit"
