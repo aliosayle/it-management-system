@@ -11,9 +11,13 @@ import DataGrid, {
   HeaderFilter,
   StateStoring,
 } from "devextreme-react/data-grid";
+import type dxDataGrid from "devextreme/ui/data_grid";
 import type { ContentReadyEvent } from "devextreme/ui/data_grid";
 
 const AUTO_NUMERIC_SUMMARY_PREFIX = "__appAutoSum:";
+
+/** Avoids redundant summary.option() calls (can retrigger load panel / remote reshape). */
+const lastAutoFooterSig = new WeakMap<object, string>();
 
 function mergeGridSection<T extends Record<string, unknown>>(
   defaults: T,
@@ -46,8 +50,25 @@ export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   autoNumericFooter?: boolean;
 };
 
-function applyAutoNumericSummaries(e: ContentReadyEvent): void {
-  const component = e.component;
+function footerSignature(
+  userTotals: Array<Record<string, unknown>>,
+  numericColumns: Array<{ dataField: string; format: unknown }>,
+): string {
+  const userPart = userTotals
+    .map(
+      (t) =>
+        `${String(t.column ?? "")}:${String(t.summaryType ?? "")}:${String(t.name ?? "")}`,
+    )
+    .sort()
+    .join("|");
+  const numPart = [...numericColumns]
+    .map((c) => `${c.dataField}:${JSON.stringify(c.format ?? null)}`)
+    .sort()
+    .join(",");
+  return `${numPart}#${userPart}`;
+}
+
+function applyAutoNumericSummaries(component: dxDataGrid): void {
   const summaryOption = component.option("summary") as
     | {
         totalItems?: Array<Record<string, unknown>>;
@@ -73,6 +94,17 @@ function applyAutoNumericSummaries(e: ContentReadyEvent): void {
       c.type !== "adaptive",
   );
 
+  const numericMeta = numericFields.map((c) => ({
+    dataField: c.dataField as string,
+    format: c.format,
+  }));
+
+  const sig = footerSignature(userTotals, numericMeta);
+  if (lastAutoFooterSig.get(component) === sig) {
+    return;
+  }
+  lastAutoFooterSig.set(component, sig);
+
   const autoTotals = numericFields.map((c) => {
     const column = c.dataField as string;
     const item: Record<string, unknown> = {
@@ -89,21 +121,6 @@ function applyAutoNumericSummaries(e: ContentReadyEvent): void {
   });
 
   const nextTotals = [...userTotals, ...autoTotals];
-
-  const same =
-    nextTotals.length === existingTotals.length &&
-    nextTotals.every((b, i) => {
-      const a = existingTotals[i];
-      return (
-        a &&
-        a.name === b.name &&
-        a.column === b.column &&
-        a.summaryType === b.summaryType
-      );
-    });
-  if (same) {
-    return;
-  }
 
   component.option("summary", {
     ...summaryOption,
@@ -136,6 +153,7 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       columnFixing,
       groupPanel,
       grouping,
+      loadPanel,
       children,
       searchPanel: searchPanelProp,
       export: exportProp,
@@ -197,12 +215,29 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       }> | undefined,
     );
 
+    /**
+     * CustomStore counts as "remote"; the default load panel plus client grouping / footer summary
+     * updates could leave the overlay visible. Default off; pass `loadPanel={{ enabled: "auto" }}` to restore.
+     */
+    const loadPanelOpts = mergeGridSection(
+      { enabled: false as boolean | "auto" },
+      loadPanel as Partial<{ enabled: boolean | "auto" }> | undefined,
+    );
+
     const handleContentReady = useCallback(
       (e: ContentReadyEvent) => {
         onContentReady?.(e);
-        if (autoNumericFooter !== false) {
-          applyAutoNumericSummaries(e);
+        if (autoNumericFooter === false) {
+          return;
         }
+        const grid = e.component;
+        queueMicrotask(() => {
+          try {
+            applyAutoNumericSummaries(grid);
+          } catch {
+            /* widget may be disposed before the microtask runs */
+          }
+        });
       },
       [onContentReady, autoNumericFooter],
     );
@@ -227,6 +262,7 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         searchPanel={searchPanel}
         export={exportOpts}
         columnChooser={columnChooserOpts}
+        loadPanel={loadPanelOpts}
         summary={summary}
         onContentReady={handleContentReady}
         {...rest}
