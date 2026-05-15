@@ -31,6 +31,11 @@ import {
   type MovementTypeValue,
   movementTypeLabel,
 } from "../constants/movement-types";
+import {
+  IT_PRODUCT_CATEGORIES,
+  IT_PRODUCT_CATEGORY_LOOKUP,
+} from "../constants/it-product-categories";
+import type { EditorPreparingEvent } from "devextreme/ui/data_grid";
 
 type PersonnelApi = {
   id: string;
@@ -185,6 +190,31 @@ export default function ProductsPage() {
       }),
     [],
   );
+
+  const onCategoryEditorPreparing = useCallback((e: EditorPreparingEvent) => {
+    if (e.dataField !== "category") {
+      return;
+    }
+    if (e.editorName && e.editorName !== "dxSelectBox") {
+      return;
+    }
+    const row = e.row?.data as { category?: string } | undefined;
+    const cur = typeof row?.category === "string" ? row.category.trim() : "";
+    const items = [...IT_PRODUCT_CATEGORIES];
+    if (cur && !items.includes(cur)) {
+      items.push(cur);
+      items.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    }
+    e.editorOptions = {
+      ...e.editorOptions,
+      items,
+      searchEnabled: true,
+      searchMode: "contains",
+      showClearButton: true,
+      placeholder: "Choose a category…",
+      acceptCustomValue: false,
+    };
+  }, []);
 
   const loadStatementData = useCallback(async (productId: string) => {
     setStatementLoading(true);
@@ -627,6 +657,7 @@ export default function ProductsPage() {
           onDataErrorOccurred={(e) => {
             notify(getDataGridErrorMessage(e), "error", 5000);
           }}
+          onEditorPreparing={onCategoryEditorPreparing}
         >
         <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
           <Popup title="Product" showTitle width={480} height="auto" />
@@ -635,7 +666,23 @@ export default function ProductsPage() {
         <Column dataField="sku" width={140}>
           <RequiredRule />
         </Column>
-        <Column dataField="category" caption="Category" width={140} />
+        <Column
+          dataField="category"
+          caption="Category"
+          width={220}
+          lookup={{ dataSource: [...IT_PRODUCT_CATEGORY_LOOKUP] }}
+          formItem={{
+            editorType: "dxSelectBox",
+            editorOptions: {
+              items: [...IT_PRODUCT_CATEGORIES],
+              searchEnabled: true,
+              searchMode: "contains",
+              showClearButton: true,
+              placeholder: "Choose a category…",
+              acceptCustomValue: false,
+            },
+          }}
+        />
         <Column dataField="name" width={220}>
           <RequiredRule />
         </Column>
