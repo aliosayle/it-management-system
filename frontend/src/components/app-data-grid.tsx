@@ -1,4 +1,9 @@
-import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import {
+  forwardRef,
+  useCallback,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+} from "react";
 import DataGrid, {
   type DataGridRef,
   Toolbar,
@@ -6,6 +11,19 @@ import DataGrid, {
   HeaderFilter,
   StateStoring,
 } from "devextreme-react/data-grid";
+import type { ContentReadyEvent } from "devextreme/ui/data_grid";
+
+const AUTO_NUMERIC_SUMMARY_PREFIX = "__appAutoSum:";
+
+function mergeGridSection<T extends Record<string, unknown>>(
+  defaults: T,
+  override: Partial<T> | undefined | null,
+): T {
+  if (!override || typeof override !== "object") {
+    return defaults;
+  }
+  return { ...defaults, ...override };
+}
 
 export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   /** When set, column order, widths (with resizing), filters, etc. persist in localStorage */
@@ -20,7 +38,79 @@ export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   showAddRowButton?: boolean;
   /** Extra toolbar items (e.g. custom buttons) rendered after Add, before search */
   toolbarItems?: ReactNode;
+  /**
+   * When true (default), a footer total (sum) is added for each visible column with `dataType="number"`.
+   * Custom `summary.totalItems` entries are preserved. Set false when you supply your own summary
+   * or when totals are not meaningful (e.g. some remote reshape setups).
+   */
+  autoNumericFooter?: boolean;
 };
+
+function applyAutoNumericSummaries(e: ContentReadyEvent): void {
+  const component = e.component;
+  const summaryOption = component.option("summary") as
+    | {
+        totalItems?: Array<Record<string, unknown>>;
+        recalculateWhileEditing?: boolean;
+        [key: string]: unknown;
+      }
+    | undefined;
+
+  const existingTotals = summaryOption?.totalItems ?? [];
+  const userTotals = existingTotals.filter(
+    (t) =>
+      typeof t.name !== "string" || !String(t.name).startsWith(AUTO_NUMERIC_SUMMARY_PREFIX),
+  );
+
+  const cols = component.getVisibleColumns();
+  const numericFields = cols.filter(
+    (c) =>
+      typeof c.dataField === "string" &&
+      Boolean(c.dataField) &&
+      c.dataType === "number" &&
+      c.visible !== false &&
+      c.type !== "buttons" &&
+      c.type !== "adaptive",
+  );
+
+  const autoTotals = numericFields.map((c) => {
+    const column = c.dataField as string;
+    const item: Record<string, unknown> = {
+      name: `${AUTO_NUMERIC_SUMMARY_PREFIX}${column}`,
+      column,
+      showInColumn: column,
+      summaryType: "sum",
+      skipEmptyValues: true,
+    };
+    if (c.format !== undefined && c.format !== null) {
+      item.valueFormat = c.format;
+    }
+    return item;
+  });
+
+  const nextTotals = [...userTotals, ...autoTotals];
+
+  const same =
+    nextTotals.length === existingTotals.length &&
+    nextTotals.every((b, i) => {
+      const a = existingTotals[i];
+      return (
+        a &&
+        a.name === b.name &&
+        a.column === b.column &&
+        a.summaryType === b.summaryType
+      );
+    });
+  if (same) {
+    return;
+  }
+
+  component.option("summary", {
+    ...summaryOption,
+    totalItems: nextTotals,
+    recalculateWhileEditing: summaryOption?.recalculateWhileEditing ?? true,
+  });
+}
 
 /** DevExtreme DataGrid with toolbar: Add, optional extras, search, export, column chooser; header filters; optional state. */
 export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
@@ -40,8 +130,12 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       searchPlaceholder,
       showAddRowButton,
       toolbarItems,
-      showColumnLines,
-      showRowLines,
+      autoNumericFooter,
+      onContentReady,
+      summary,
+      columnFixing,
+      groupPanel,
+      grouping,
       children,
       searchPanel: searchPanelProp,
       export: exportProp,
@@ -72,13 +166,54 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         : {}),
     };
 
+    const columnFixingOpts = mergeGridSection(
+      { enabled: true },
+      columnFixing as Partial<{ enabled: boolean }> | undefined,
+    );
+
+    const groupPanelOpts = mergeGridSection(
+      {
+        visible: true,
+        allowColumnDragging: true,
+        emptyPanelText: "Drag a column header here to group by that column",
+      },
+      groupPanel as Partial<{
+        visible: boolean;
+        allowColumnDragging: boolean;
+        emptyPanelText: string;
+      }> | undefined,
+    );
+
+    const groupingOpts = mergeGridSection(
+      {
+        allowCollapsing: true,
+        autoExpandAll: true,
+        contextMenuEnabled: true,
+      },
+      grouping as Partial<{
+        allowCollapsing: boolean;
+        autoExpandAll: boolean;
+        contextMenuEnabled: boolean;
+      }> | undefined,
+    );
+
+    const handleContentReady = useCallback(
+      (e: ContentReadyEvent) => {
+        onContentReady?.(e);
+        if (autoNumericFooter !== false) {
+          applyAutoNumericSummaries(e);
+        }
+      },
+      [onContentReady, autoNumericFooter],
+    );
+
     return (
       <DataGrid
         ref={ref}
         className={["dx-datagrid-app", "dx-card", "wide-card", className].filter(Boolean).join(" ")}
         showBorders={showBorders ?? true}
-        showColumnLines={showColumnLines ?? true}
-        showRowLines={showRowLines ?? true}
+        showColumnLines={rest.showColumnLines ?? true}
+        showRowLines={rest.showRowLines ?? true}
         rowAlternationEnabled={rowAlternationEnabled ?? true}
         columnAutoWidth={columnAutoWidth ?? true}
         columnMinWidth={columnMinWidth ?? 64}
@@ -86,9 +221,14 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         allowColumnReordering={allowColumnReordering ?? true}
         allowColumnResizing={allowColumnResizing ?? true}
         columnResizingMode={columnResizingMode ?? "widget"}
+        columnFixing={columnFixingOpts}
+        groupPanel={groupPanelOpts}
+        grouping={groupingOpts}
         searchPanel={searchPanel}
         export={exportOpts}
         columnChooser={columnChooserOpts}
+        summary={summary}
+        onContentReady={handleContentReady}
         {...rest}
       >
         <Toolbar>
