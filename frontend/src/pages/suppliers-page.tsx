@@ -59,6 +59,14 @@ export default function SuppliersPage() {
         update: (key, values) => {
           const payload = { ...(values as Record<string, unknown>) };
           delete payload.id;
+          delete payload.completedPurchasesTotal;
+          delete payload.pendingPurchasesTotal;
+          delete payload.completedPurchaseCount;
+          delete payload.pendingPurchaseCount;
+          delete payload.totalPurchaseCount;
+          delete payload.totalLineItems;
+          delete payload.distinctProductCount;
+          delete payload.lastPurchaseAt;
           return apiFetch(`/api/suppliers/${key}`, {
             method: "PATCH",
             body: JSON.stringify(payload),
@@ -129,7 +137,7 @@ export default function SuppliersPage() {
       </div>
       <div className="page-grid-body">
         <AppDataGrid
-          persistenceKey="itm-grid-suppliers"
+          persistenceKey="itm-grid-suppliers-v2"
           dataSource={dataSource}
           repaintChangesOnly
           height="100%"
@@ -147,6 +155,64 @@ export default function SuppliersPage() {
           </Column>
           <Column dataField="email" width={200} />
           <Column dataField="phone" width={140} />
+          <Column
+            dataField="completedPurchasesTotal"
+            caption="Completed total"
+            dataType="number"
+            format="#,##0.00"
+            allowEditing={false}
+            allowSorting
+            formItem={{ visible: false }}
+          />
+          <Column
+            dataField="pendingPurchasesTotal"
+            caption="Pending total"
+            dataType="number"
+            format="#,##0.00"
+            allowEditing={false}
+            allowSorting
+            formItem={{ visible: false }}
+          />
+          <Column
+            dataField="completedPurchaseCount"
+            caption="Completed POs"
+            dataType="number"
+            allowEditing={false}
+            allowSorting
+            formItem={{ visible: false }}
+          />
+          <Column
+            dataField="pendingPurchaseCount"
+            caption="Pending POs"
+            dataType="number"
+            allowEditing={false}
+            allowSorting
+            formItem={{ visible: false }}
+          />
+          <Column
+            dataField="totalLineItems"
+            caption="Line items"
+            dataType="number"
+            allowEditing={false}
+            allowSorting
+            formItem={{ visible: false }}
+          />
+          <Column
+            dataField="distinctProductCount"
+            caption="Products"
+            dataType="number"
+            allowEditing={false}
+            allowSorting
+            formItem={{ visible: false }}
+          />
+          <Column
+            dataField="lastPurchaseAt"
+            caption="Last activity"
+            dataType="datetime"
+            allowEditing={false}
+            allowSorting
+            formItem={{ visible: false }}
+          />
           <Column dataField="notes" formItem={{ colSpan: 2 }} />
           <Column
             dataField="createdAt"

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, PurchaseStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -19,9 +19,92 @@ const createSchema = z.object({
 
 const updateSchema = createSchema.partial();
 
+type SupplierLineAgg = {
+  completedTotal: number;
+  pendingTotal: number;
+  purchaseIds: Set<string>;
+  completePurchaseIds: Set<string>;
+  pendingPurchaseIds: Set<string>;
+  lastActivityAt: number | null;
+  productIds: Set<string>;
+  lineCount: number;
+};
+
+function emptyAgg(): SupplierLineAgg {
+  return {
+    completedTotal: 0,
+    pendingTotal: 0,
+    purchaseIds: new Set(),
+    completePurchaseIds: new Set(),
+    pendingPurchaseIds: new Set(),
+    lastActivityAt: null,
+    productIds: new Set(),
+    lineCount: 0,
+  };
+}
+
 router.get("/", async (_req, res) => {
   const list = await prisma.supplier.findMany({ orderBy: { name: "asc" } });
-  res.json(list);
+  if (list.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const ids = list.map((s) => s.id);
+  const lines = await prisma.purchaseLine.findMany({
+    where: { supplierId: { in: ids } },
+    select: {
+      supplierId: true,
+      productId: true,
+      quantity: true,
+      unitPrice: true,
+      purchase: { select: { id: true, status: true, createdAt: true } },
+    },
+  });
+
+  const map = new Map<string, SupplierLineAgg>();
+  for (const l of lines) {
+    let m = map.get(l.supplierId);
+    if (!m) {
+      m = emptyAgg();
+      map.set(l.supplierId, m);
+    }
+    const amt = Number(l.quantity) * Number(l.unitPrice);
+    const st = l.purchase.status;
+    const t = l.purchase.createdAt.getTime();
+    m.purchaseIds.add(l.purchase.id);
+    m.productIds.add(l.productId);
+    m.lineCount += 1;
+    if (st === PurchaseStatus.COMPLETE) {
+      m.completedTotal += amt;
+      m.completePurchaseIds.add(l.purchase.id);
+    } else if (st === PurchaseStatus.PENDING) {
+      m.pendingTotal += amt;
+      m.pendingPurchaseIds.add(l.purchase.id);
+    }
+    if (st !== PurchaseStatus.CANCELLED) {
+      if (m.lastActivityAt === null || t > m.lastActivityAt) {
+        m.lastActivityAt = t;
+      }
+    }
+  }
+
+  res.json(
+    list.map((s) => {
+      const m = map.get(s.id) ?? emptyAgg();
+      return {
+        ...s,
+        completedPurchasesTotal: m.completedTotal,
+        pendingPurchasesTotal: m.pendingTotal,
+        completedPurchaseCount: m.completePurchaseIds.size,
+        pendingPurchaseCount: m.pendingPurchaseIds.size,
+        totalPurchaseCount: m.purchaseIds.size,
+        totalLineItems: m.lineCount,
+        distinctProductCount: m.productIds.size,
+        lastPurchaseAt: m.lastActivityAt != null ? new Date(m.lastActivityAt).toISOString() : null,
+      };
+    }),
+  );
 });
 
 router.post("/", async (req, res) => {
