@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Prisma, PurchaseDestination, PurchaseStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { rememberProductCategory } from "../lib/product-category.js";
 import { requireAuth } from "../middleware/auth.js";
 import { movementJson } from "../lib/movement-format.js";
 
@@ -242,6 +243,7 @@ router.post("/", async (req, res) => {
             : new Prisma.Decimal(0),
       },
     });
+    await rememberProductCategory(p.category);
     res.status(201).json(productJson(p));
   } catch (e: unknown) {
     const code = (e as { code?: string })?.code;
@@ -280,6 +282,9 @@ router.patch("/:id", async (req, res) => {
       where: { id: req.params.id },
       data,
     });
+    if (category !== undefined) {
+      await rememberProductCategory(category.trim());
+    }
     res.json(productJson(p));
   } catch (e: unknown) {
     const code = (e as { code?: string })?.code;

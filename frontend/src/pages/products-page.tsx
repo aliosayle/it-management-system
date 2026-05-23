@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
 import CustomStore from "devextreme/data/custom_store";
 import {
   Column,
@@ -31,10 +31,7 @@ import {
   type MovementTypeValue,
   movementTypeLabel,
 } from "../constants/movement-types";
-import {
-  IT_PRODUCT_CATEGORIES,
-  IT_PRODUCT_CATEGORY_LOOKUP,
-} from "../constants/it-product-categories";
+import { productCategoryFilterLookup, productCategorySelectItems } from "../constants/it-product-categories";
 import type { EditorPreparingEvent } from "devextreme/ui/data_grid";
 
 type PersonnelApi = {
@@ -48,6 +45,10 @@ type AssignForm = {
   productId: string | null;
   quantity: number;
   note: string;
+};
+
+type AddCategoryForm = {
+  label: string;
 };
 
 type MovementRow = {
@@ -136,6 +137,19 @@ export default function ProductsPage() {
   const [statementLoading, setStatementLoading] = useState(false);
   const [statementError, setStatementError] = useState<string | null>(null);
 
+  const [savedCategoryLabels, setSavedCategoryLabels] = useState<string[]>([]);
+  const [addCategoryOpen, setAddCategoryOpen] = useState(false);
+  const [addCategoryForm, setAddCategoryForm] = useState<AddCategoryForm>({ label: "" });
+
+  const loadSavedCategories = useCallback(async () => {
+    try {
+      const res = (await apiFetch("/api/product-categories")) as { labels?: string[] };
+      setSavedCategoryLabels(Array.isArray(res.labels) ? res.labels : []);
+    } catch (e: unknown) {
+      notify(getErrorMessage(e, "Failed to load product categories"), "error", 5000);
+    }
+  }, []);
+
   const loadAssignMeta = useCallback(async () => {
     const [pl, pr] = await Promise.all([
       apiFetch("/api/personnel") as Promise<PersonnelApi[]>,
@@ -162,59 +176,74 @@ export default function ProductsPage() {
     loadAssignMeta().catch((e: unknown) => {
       notify(getErrorMessage(e, "Failed to load assign options"), "error", 5000);
     });
-  }, [loadAssignMeta]);
+    void loadSavedCategories();
+  }, [loadAssignMeta, loadSavedCategories]);
+
+  const categoryLookupDataSource = useMemo(
+    () => productCategoryFilterLookup(savedCategoryLabels),
+    [savedCategoryLabels],
+  );
+
+  const categoryFormSelectItems = useMemo(
+    () => productCategorySelectItems(savedCategoryLabels, null),
+    [savedCategoryLabels],
+  );
 
   const dataSource = useMemo(
     () =>
       new CustomStore({
         key: "id",
         load: () => apiFetch("/api/products") as Promise<Record<string, unknown>[]>,
-        insert: (values) =>
-          apiFetch("/api/products", {
+        insert: async (values) => {
+          const created = (await apiFetch("/api/products", {
             method: "POST",
             body: JSON.stringify(values),
-          }) as Promise<Record<string, unknown>>,
-        update: (key, values) => {
+          })) as Record<string, unknown>;
+          await loadSavedCategories();
+          return created;
+        },
+        update: async (key, values) => {
           const payload = { ...(values as Record<string, unknown>) };
           delete payload.id;
           delete payload.quantityOnHand;
           delete payload.lastPurchaseUnitPrice;
           delete payload.averagePurchaseUnitPrice;
-          return apiFetch(`/api/products/${key}`, {
+          const updated = (await apiFetch(`/api/products/${key}`, {
             method: "PATCH",
             body: JSON.stringify(payload),
-          }) as Promise<Record<string, unknown>>;
+          })) as Record<string, unknown>;
+          await loadSavedCategories();
+          return updated;
         },
         remove: (key) =>
           apiFetch(`/api/products/${key}`, { method: "DELETE" }) as Promise<void>,
       }),
-    [],
+    [loadSavedCategories],
   );
 
-  const onCategoryEditorPreparing = useCallback((e: EditorPreparingEvent) => {
-    if (e.dataField !== "category") {
-      return;
-    }
-    if (e.editorName && e.editorName !== "dxSelectBox") {
-      return;
-    }
-    const row = e.row?.data as { category?: string } | undefined;
-    const cur = typeof row?.category === "string" ? row.category.trim() : "";
-    const items = [...IT_PRODUCT_CATEGORIES];
-    if (cur && !items.includes(cur)) {
-      items.push(cur);
-      items.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    }
-    e.editorOptions = {
-      ...e.editorOptions,
-      items,
-      searchEnabled: true,
-      searchMode: "contains",
-      showClearButton: true,
-      placeholder: "Choose a category…",
-      acceptCustomValue: false,
-    };
-  }, []);
+  const onCategoryEditorPreparing = useCallback(
+    (e: EditorPreparingEvent) => {
+      if (e.dataField !== "category") {
+        return;
+      }
+      if (e.editorName && e.editorName !== "dxSelectBox") {
+        return;
+      }
+      const row = e.row?.data as { category?: string } | undefined;
+      const cur = typeof row?.category === "string" ? row.category.trim() : "";
+      const items = productCategorySelectItems(savedCategoryLabels, cur);
+      e.editorOptions = {
+        ...e.editorOptions,
+        items,
+        searchEnabled: true,
+        searchMode: "contains",
+        showClearButton: true,
+        placeholder: "Choose a category or type a new one…",
+        acceptCustomValue: true,
+      };
+    },
+    [savedCategoryLabels],
+  );
 
   const loadStatementData = useCallback(async (productId: string) => {
     setStatementLoading(true);
@@ -260,6 +289,37 @@ export default function ProductsPage() {
     if (!dataField) return;
     setAssignForm((prev) => ({ ...prev, [dataField]: value }));
   }, []);
+
+  const onAddCategoryFieldChanged = useCallback((e: FormTypes.FieldDataChangedEvent) => {
+    const { dataField, value } = e;
+    if (!dataField) return;
+    setAddCategoryForm((prev) => ({ ...prev, [dataField]: value }));
+  }, []);
+
+  const openAddCategoryPopup = useCallback(() => {
+    setAddCategoryForm({ label: "" });
+    setAddCategoryOpen(true);
+  }, []);
+
+  const submitAddCategory = useCallback(async () => {
+    const label = addCategoryForm.label.trim();
+    if (!label) {
+      notify("Enter a category name", "warning", 3000);
+      return;
+    }
+    try {
+      const res = (await apiFetch("/api/product-categories", {
+        method: "POST",
+        body: JSON.stringify({ label }),
+      })) as { labels?: string[] };
+      setSavedCategoryLabels(Array.isArray(res.labels) ? res.labels : []);
+      setAddCategoryOpen(false);
+      setAddCategoryForm({ label: "" });
+      notify("Category saved. It is available when editing products.", "success", 3500);
+    } catch (e: unknown) {
+      notify(getErrorMessage(e, "Failed to save category"), "error", 5000);
+    }
+  }, [addCategoryForm]);
 
   const openAssignPopup = useCallback(async () => {
     try {
@@ -634,20 +694,32 @@ export default function ProductsPage() {
           focusedRowEnabled
           height="100%"
           toolbarItems={
-            <GridToolbarItem
-              location="before"
-              widget="dxButton"
-              options={{
-                text: "Assign to personnel bin",
-                type: "default",
-                stylingMode: "contained",
-                icon: "user",
-                disabled: personnelOptions.length === 0 || productOptions.length === 0,
-                onClick: () => {
-                  void openAssignPopup();
-                },
-              }}
-            />
+            <Fragment>
+              <GridToolbarItem
+                location="before"
+                widget="dxButton"
+                options={{
+                  text: "Assign to personnel bin",
+                  type: "default",
+                  stylingMode: "contained",
+                  icon: "user",
+                  disabled: personnelOptions.length === 0 || productOptions.length === 0,
+                  onClick: () => {
+                    void openAssignPopup();
+                  },
+                }}
+              />
+              <GridToolbarItem
+                location="before"
+                widget="dxButton"
+                options={{
+                  text: "Add category",
+                  stylingMode: "outlined",
+                  icon: "plus",
+                  onClick: () => openAddCategoryPopup(),
+                }}
+              />
+            </Fragment>
           }
           onInitNewRow={(e) => {
             const d = e.data as { quantityOnHand?: number; category?: string };
@@ -670,16 +742,16 @@ export default function ProductsPage() {
           dataField="category"
           caption="Category"
           width={220}
-          lookup={{ dataSource: [...IT_PRODUCT_CATEGORY_LOOKUP] }}
+          lookup={{ dataSource: categoryLookupDataSource }}
           formItem={{
             editorType: "dxSelectBox",
             editorOptions: {
-              items: [...IT_PRODUCT_CATEGORIES],
+              items: categoryFormSelectItems,
               searchEnabled: true,
               searchMode: "contains",
               showClearButton: true,
-              placeholder: "Choose a category…",
-              acceptCustomValue: false,
+              placeholder: "Choose a category or type a new one…",
+              acceptCustomValue: true,
             },
           }}
         />
@@ -761,6 +833,36 @@ export default function ProductsPage() {
         <Pager showPageSizeSelector showInfo />
       </AppDataGrid>
       </div>
+
+      <PopupDx
+        visible={addCategoryOpen}
+        onHiding={() => setAddCategoryOpen(false)}
+        showTitle
+        title="Add product category"
+        width={440}
+        height="auto"
+        showCloseButton
+      >
+        <Form formData={addCategoryForm} onFieldDataChanged={onAddCategoryFieldChanged}>
+          <Item
+            dataField="label"
+            editorType="dxTextBox"
+            editorOptions={{ maxLength: 128, placeholder: "e.g. Lab instruments" }}
+          >
+            <Label text="Category name" />
+            <FormRequiredRule />
+          </Item>
+        </Form>
+        <div style={{ padding: "8px 0 0", textAlign: "right" }}>
+          <Button text="Cancel" stylingMode="outlined" onClick={() => setAddCategoryOpen(false)} />
+          <Button
+            text="Save category"
+            type="default"
+            stylingMode="contained"
+            onClick={() => void submitAddCategory()}
+          />
+        </div>
+      </PopupDx>
 
       <PopupDx
         visible={assignOpen}

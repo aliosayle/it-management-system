@@ -5,6 +5,7 @@ import helmet from "helmet";
 import authRoutes from "./routes/auth.js";
 import usersRoutes from "./routes/users.js";
 import productsRoutes from "./routes/products.js";
+import productCategoriesRoutes from "./routes/product-categories.js";
 import stockRoutes from "./routes/stock.js";
 import companiesRoutes from "./routes/companies.js";
 import sitesRoutes from "./routes/sites.js";
@@ -36,6 +37,7 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/product-categories", productCategoriesRoutes);
 app.use("/api/products", productsRoutes);
 app.use("/api/stock", stockRoutes);
 app.use("/api/companies", companiesRoutes);

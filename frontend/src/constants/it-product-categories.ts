@@ -209,3 +209,38 @@ export const IT_PRODUCT_CATEGORIES: readonly string[] = [
 
 /** For lookups: allow empty / uncategorized alongside the canonical list. */
 export const IT_PRODUCT_CATEGORY_LOOKUP: readonly string[] = ["", ...IT_PRODUCT_CATEGORIES];
+
+/** Built-in IT list + saved API labels + current cell value (deduped, sorted). */
+export function mergeProductCategoryChoices(
+  savedLabels: readonly string[],
+  current?: string | null,
+): string[] {
+  const s = new Set<string>();
+  for (const x of IT_PRODUCT_CATEGORIES) {
+    s.add(x);
+  }
+  for (const x of savedLabels) {
+    const t = String(x).trim();
+    if (t) {
+      s.add(t);
+    }
+  }
+  const c = typeof current === "string" ? current.trim() : "";
+  if (c) {
+    s.add(c);
+  }
+  return [...s].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+/** SelectBox items: blank row first for “no category”, then merged choices. */
+export function productCategorySelectItems(
+  savedLabels: readonly string[],
+  current?: string | null,
+): string[] {
+  return ["", ...mergeProductCategoryChoices(savedLabels, current)];
+}
+
+/** Filter-row lookup: empty string + all known labels. */
+export function productCategoryFilterLookup(savedLabels: readonly string[]): string[] {
+  return ["", ...mergeProductCategoryChoices(savedLabels, null)];
+}

@@ -151,6 +151,13 @@ model Product {
   purchaseLines      PurchaseLine[]
 }
 
+/** Saved category labels (custom + any distinct value from products) for product pickers. */
+model ProductCategory {
+  id        String   @id @default(cuid())
+  label     String   @unique @db.VarChar(128)
+  createdAt DateTime @default(now())
+}
+
 /// Personal catalog per personnel member (not warehouse stock).
 model PersonnelBinItem {
   id          String    @id @default(cuid())
