@@ -17,7 +17,6 @@ export const navigation: NavItem[] = [
   { text: "Personnel", path: "/personnel", icon: "group", resource: "personnel" },
   { text: "Products", path: "/products", icon: "product", resource: "products" },
   { text: "Suppliers", path: "/suppliers", icon: "globe", resource: "suppliers" },
-  { text: "Stock", path: "/stock", icon: "orderedlist", resource: "stock" },
   { text: "Purchases", path: "/purchases", icon: "cart", resource: "purchases" },
   { text: "Tasks", path: "/tasks", icon: "taskcomplete", resource: "tasks" },
   { text: "Users", path: "/users", icon: "user", resource: "users" },

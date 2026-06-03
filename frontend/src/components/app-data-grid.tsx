@@ -1,10 +1,14 @@
 import {
   forwardRef,
   useCallback,
+  useState,
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
 import type { ToolbarPreparingEvent } from "devextreme/ui/data_grid";
+import type { OptionChangedEvent } from "devextreme/ui/data_grid";
+import type dxDataGrid from "devextreme/ui/data_grid";
+import type { Field } from "devextreme/ui/filter_builder";
 import { usePagePermissions } from "../hooks/use-permissions";
 import type { PermissionResource } from "../lib/permissions";
 import DataGrid, {
@@ -14,8 +18,8 @@ import DataGrid, {
   HeaderFilter,
   StateStoring,
 } from "devextreme-react/data-grid";
+import FilterBuilder from "devextreme-react/filter-builder";
 import notify from "devextreme/ui/notify";
-import type dxDataGrid from "devextreme/ui/data_grid";
 import type { ContentReadyEvent, ExportingEvent } from "devextreme/ui/data_grid";
 import { getErrorMessage } from "../utils/error-message";
 import {
@@ -36,6 +40,32 @@ function mergeGridSection<T extends Record<string, unknown>>(
     return defaults;
   }
   return { ...defaults, ...override };
+}
+
+function buildFilterFields(grid: dxDataGrid): Field[] {
+  return grid
+    .getVisibleColumns()
+    .filter(
+      (c) =>
+        typeof c.dataField === "string" &&
+        Boolean(c.dataField) &&
+        c.allowFiltering !== false &&
+        c.type !== "buttons" &&
+        c.type !== "adaptive",
+    )
+    .map((c) => {
+      const field: Field = {
+        dataField: c.dataField as string,
+        caption:
+          typeof c.caption === "string" && c.caption
+            ? c.caption
+            : (c.dataField as string),
+      };
+      if (c.dataType) {
+        field.dataType = c.dataType as Field["dataType"];
+      }
+      return field;
+    });
 }
 
 export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
@@ -61,6 +91,8 @@ export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   autoNumericFooter?: boolean;
   /** When set, toolbar add row stays visible but is disabled when the user lacks add permission. */
   permissionResource?: PermissionResource;
+  /** DevExtreme Filter Builder panel below the grid (default true). */
+  showFilterBuilder?: boolean;
 };
 
 function footerSignature(
@@ -142,7 +174,7 @@ function applyAutoNumericSummaries(component: dxDataGrid): void {
   });
 }
 
-/** DevExtreme DataGrid with toolbar: Add, optional extras, search, export, column chooser; header filters; optional state. */
+/** DevExtreme DataGrid with toolbar, header filters, filter builder below, export, and optional state. */
 export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
   function AppDataGrid(
     {
@@ -151,6 +183,7 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       rowAlternationEnabled,
       columnAutoWidth,
       width,
+      height,
       allowColumnReordering,
       allowColumnResizing,
       columnResizingMode,
@@ -163,9 +196,12 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       autoNumericFooter,
       exportFileName,
       permissionResource,
+      showFilterBuilder = true,
       onContentReady,
       onExporting: onExportingProp,
       onToolbarPreparing: onToolbarPreparingProp,
+      onOptionChanged: onOptionChangedProp,
+      filterValue: filterValueProp,
       summary,
       columnFixing,
       groupPanel,
@@ -182,6 +218,9 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
     const pagePerms = usePagePermissions(permissionResource);
     const canAdd = pagePerms.canAdd;
     const showAdd = showAddRowButton !== false;
+
+    const [filterFields, setFilterFields] = useState<Field[]>([]);
+    const [filterValue, setFilterValue] = useState<any>(filterValueProp);
 
     const handleToolbarPreparing = useCallback(
       (e: ToolbarPreparingEvent) => {
@@ -269,78 +308,115 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       }> | undefined,
     );
 
-    /**
-     * CustomStore counts as "remote"; the default load panel plus client grouping / footer summary
-     * updates could leave the overlay visible. Default off; pass `loadPanel={{ enabled: "auto" }}` to restore.
-     */
     const loadPanelOpts = mergeGridSection(
       { enabled: false as boolean | "auto" },
       loadPanel as Partial<{ enabled: boolean | "auto" }> | undefined,
     );
 
+    const handleOptionChanged = useCallback(
+      (e: OptionChangedEvent) => {
+        onOptionChangedProp?.(e);
+        if (showFilterBuilder && e.fullName === "filterValue") {
+          setFilterValue(e.value);
+        }
+      },
+      [onOptionChangedProp, showFilterBuilder],
+    );
+
     const handleContentReady = useCallback(
       (e: ContentReadyEvent) => {
         onContentReady?.(e);
-        if (autoNumericFooter === false) {
-          return;
-        }
         const grid = e.component;
         queueMicrotask(() => {
           try {
-            applyAutoNumericSummaries(grid);
+            if (showFilterBuilder) {
+              setFilterFields(buildFilterFields(grid));
+              const stored = grid.option("filterValue");
+              if (stored !== undefined && stored !== null) {
+                setFilterValue(stored);
+              }
+            }
+            if (autoNumericFooter !== false) {
+              applyAutoNumericSummaries(grid);
+            }
           } catch {
             /* widget may be disposed before the microtask runs */
           }
         });
       },
-      [onContentReady, autoNumericFooter],
+      [onContentReady, autoNumericFooter, showFilterBuilder],
     );
 
+    const shellStyle =
+      height !== undefined && height !== null
+        ? { height: height as string | number }
+        : undefined;
+
     return (
-      <DataGrid
-        ref={ref}
-        className={["dx-datagrid-app", "dx-card", "wide-card", className].filter(Boolean).join(" ")}
-        showBorders={showBorders ?? true}
-        showColumnLines={rest.showColumnLines ?? true}
-        showRowLines={rest.showRowLines ?? true}
-        rowAlternationEnabled={rowAlternationEnabled ?? true}
-        columnAutoWidth={columnAutoWidth ?? true}
-        columnMinWidth={columnMinWidth ?? 64}
-        width={width ?? "100%"}
-        allowColumnReordering={allowColumnReordering ?? true}
-        allowColumnResizing={allowColumnResizing ?? true}
-        columnResizingMode={columnResizingMode ?? "widget"}
-        columnFixing={columnFixingOpts}
-        groupPanel={groupPanelOpts}
-        grouping={groupingOpts}
-        searchPanel={searchPanel}
-        export={exportOpts}
-        columnChooser={columnChooserOpts}
-        loadPanel={loadPanelOpts}
-        summary={summary}
-        onContentReady={handleContentReady}
-        onExporting={handleExporting}
-        onToolbarPreparing={handleToolbarPreparing}
-        {...rest}
+      <div
+        className={["app-data-grid-shell", className].filter(Boolean).join(" ")}
+        style={shellStyle}
       >
-        <Toolbar>
-          {showAdd ? <ToolbarItem name="addRowButton" location="before" /> : null}
-          {toolbarItems}
-          <ToolbarItem name="searchPanel" locateInMenu="auto" />
-          <ToolbarItem name="exportButton" locateInMenu="auto" />
-          <ToolbarItem name="columnChooserButton" locateInMenu="auto" />
-        </Toolbar>
-        <HeaderFilter visible allowSearch />
-        {persistenceKey ? (
-          <StateStoring
-            enabled
-            type="localStorage"
-            storageKey={persistenceKey}
-            savingTimeout={500}
-          />
+        <div className="app-data-grid-shell__grid">
+          <DataGrid
+            ref={ref}
+            className={["dx-datagrid-app", "dx-card", "wide-card"].filter(Boolean).join(" ")}
+            showBorders={showBorders ?? true}
+            showColumnLines={rest.showColumnLines ?? true}
+            showRowLines={rest.showRowLines ?? true}
+            rowAlternationEnabled={rowAlternationEnabled ?? true}
+            columnAutoWidth={columnAutoWidth ?? true}
+            columnMinWidth={columnMinWidth ?? 64}
+            width={width ?? "100%"}
+            height="100%"
+            allowColumnReordering={allowColumnReordering ?? true}
+            allowColumnResizing={allowColumnResizing ?? true}
+            columnResizingMode={columnResizingMode ?? "widget"}
+            columnFixing={columnFixingOpts}
+            groupPanel={groupPanelOpts}
+            grouping={groupingOpts}
+            searchPanel={searchPanel}
+            export={exportOpts}
+            columnChooser={columnChooserOpts}
+            loadPanel={loadPanelOpts}
+            summary={summary}
+            filterValue={showFilterBuilder ? filterValue : filterValueProp}
+            onContentReady={handleContentReady}
+            onExporting={handleExporting}
+            onToolbarPreparing={handleToolbarPreparing}
+            onOptionChanged={handleOptionChanged}
+            {...rest}
+          >
+            <Toolbar>
+              {showAdd ? <ToolbarItem name="addRowButton" location="before" /> : null}
+              {toolbarItems}
+              <ToolbarItem name="searchPanel" locateInMenu="auto" />
+              <ToolbarItem name="exportButton" locateInMenu="auto" />
+              <ToolbarItem name="columnChooserButton" locateInMenu="auto" />
+            </Toolbar>
+            <HeaderFilter visible allowSearch />
+            {persistenceKey ? (
+              <StateStoring
+                enabled
+                type="localStorage"
+                storageKey={persistenceKey}
+                savingTimeout={500}
+              />
+            ) : null}
+            {children}
+          </DataGrid>
+        </div>
+        {showFilterBuilder && filterFields.length > 0 ? (
+          <div className="app-data-grid-shell__filter-builder">
+            <div className="app-data-grid-shell__filter-builder-label">Filter</div>
+            <FilterBuilder
+              fields={filterFields}
+              value={filterValue}
+              onValueChanged={(e) => setFilterValue(e.value)}
+            />
+          </div>
         ) : null}
-        {children}
-      </DataGrid>
+      </div>
     );
   },
 );

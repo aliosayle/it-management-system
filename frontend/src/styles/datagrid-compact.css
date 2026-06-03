@@ -15,3 +15,34 @@
   padding-top: 2px;
   padding-bottom: 2px;
 }
+
+.app-data-grid-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.app-data-grid-shell__grid {
+  flex: 1 1 auto;
+  min-height: 200px;
+  min-width: 0;
+}
+
+.app-data-grid-shell__filter-builder {
+  flex: 0 0 auto;
+  max-height: 220px;
+  overflow: auto;
+  border-top: 1px solid var(--app-border-subtle, rgba(128, 128, 128, 0.35));
+  padding: 8px 10px 10px;
+  background: var(--base-bg, #fff);
+}
+
+.app-data-grid-shell__filter-builder-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}

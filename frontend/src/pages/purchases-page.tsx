@@ -264,7 +264,7 @@ function buildPurchaseEditConfirmMessage(
 
   if (summary.hasStock) {
     lines.push(
-      "• Lines assigned to stock: StockMovement rows tied to this purchase and each product’s quantity on hand. Product stock statements and the Stock page read from those movements.",
+      "• Lines assigned to stock: StockMovement rows tied to this purchase and each product’s quantity on hand. Product stock statements read from those movements.",
     );
   }
   if (summary.hasDepartment) {

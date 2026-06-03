@@ -89,9 +89,10 @@ export async function notifyTaskSubmittedForReview(params: {
   assigneeName: string;
 }) {
   if (!params.recipientId) return;
+  // TASK_STATUS: works with any deployed Prisma client (TASK_SUBMITTED_FOR_REVIEW needs prisma generate).
   await notifyUser({
     userId: params.recipientId,
-    type: UserNotificationType.TASK_SUBMITTED_FOR_REVIEW,
+    type: UserNotificationType.TASK_STATUS,
     taskId: params.taskId,
     title: "Task submitted for review",
     body: `${params.assigneeName} submitted "${params.title}" for your review. Please review and complete the task.`,
