@@ -61,7 +61,7 @@ export async function canViewTask(
   return canReadAllTasks(actor);
 }
 
-export async function canEditTaskFields(
+export async function canManageTask(
   actor: TaskActor,
   task: { createdById: string; assigneeId: string },
 ): Promise<boolean> {
@@ -70,12 +70,51 @@ export async function canEditTaskFields(
   return canEditAnyTask(actor);
 }
 
+/** @deprecated use canManageTask */
+export const canEditTaskFields = canManageTask;
+
+export async function isTaskAssignee(
+  actor: TaskActor,
+  task: { assigneeId: string },
+): Promise<boolean> {
+  return task.assigneeId === actor.id;
+}
+
+/** Assignee-only work UI (not admin/creator/tasks.edit). */
+export async function isAssigneeWorkMode(
+  actor: TaskActor,
+  task: { createdById: string; assigneeId: string },
+): Promise<boolean> {
+  if (!(await isTaskAssignee(actor, task))) return false;
+  return !(await canManageTask(actor, task));
+}
+
+export async function canUploadTaskAttachment(
+  actor: TaskActor,
+  task: { createdById: string; assigneeId: string },
+): Promise<boolean> {
+  if (!(await canViewTask(actor, task))) return false;
+  if (await canManageTask(actor, task)) return true;
+  return task.assigneeId === actor.id;
+}
+
 export async function canChangeTaskStatus(
   actor: TaskActor,
   task: { createdById: string; assigneeId: string },
 ): Promise<boolean> {
-  if (await canEditTaskFields(actor, task)) return true;
+  if (await canManageTask(actor, task)) return true;
   return task.assigneeId === actor.id;
+}
+
+export type TaskViewerRole = "manager" | "assignee" | "observer";
+
+export async function resolveTaskViewerRole(
+  actor: TaskActor,
+  task: { createdById: string; assigneeId: string },
+): Promise<TaskViewerRole> {
+  if (await canManageTask(actor, task)) return "manager";
+  if (task.assigneeId === actor.id) return "assignee";
+  return "observer";
 }
 
 export async function canDeleteTask(

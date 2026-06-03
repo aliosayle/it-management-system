@@ -66,6 +66,7 @@ enum TaskActivityType {
   FOLLOW_UP_SCHEDULED
   FOLLOW_UP_COMPLETED
   EDIT
+  ATTACHMENT_ADDED
 }
 
 enum UserNotificationType {
@@ -92,6 +93,7 @@ model User {
   taskFollowUpsCreated TaskFollowUp[]    @relation("TaskFollowUpCreator")
   taskFollowUpsAssigned TaskFollowUp[]   @relation("TaskFollowUpAssignee")
   taskActivities     TaskActivity[]
+  taskAttachments    TaskAttachment[]
   notifications      UserNotification[]
 }
 
@@ -352,6 +354,7 @@ model Task {
   purchase      Purchase?    @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
   followUps     TaskFollowUp[]
   activities    TaskActivity[]
+  attachments   TaskAttachment[]
   notifications UserNotification[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -360,6 +363,21 @@ model Task {
   @@index([createdById])
   @@index([status])
   @@index([dueAt])
+}
+
+model TaskAttachment {
+  id           String   @id @default(cuid())
+  taskId       String
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  storedPath   String   @db.VarChar(1024)
+  originalName String   @db.VarChar(512)
+  mimeType     String   @db.VarChar(128)
+  fileSize     Int
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime @default(now())
+
+  @@index([taskId])
 }
 
 model TaskFollowUp {

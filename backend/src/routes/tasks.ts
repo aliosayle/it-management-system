@@ -1,3 +1,5 @@
+import path from "path";
+import fs from "fs";
 import { Router } from "express";
 import { z } from "zod";
 import {
@@ -13,13 +15,21 @@ import {
   canChangeTaskStatus,
   canCreateTask,
   canDeleteTask,
-  canEditTaskFields,
+  canEditAnyTask,
+  canManageTask,
   canReadAllTasks,
+  canUploadTaskAttachment,
   canViewTask,
   getTaskActor,
+  resolveTaskViewerRole,
   taskListWhere,
   type TaskListScope,
 } from "../lib/task-access.js";
+import {
+  resolveTaskAttachmentPath,
+  taskPhotoUpload,
+  taskUploadRoot,
+} from "../lib/task-upload.js";
 import {
   notifyFollowUpScheduled,
   notifyTaskAssigned,
@@ -27,6 +37,14 @@ import {
   notifyTaskReassigned,
   notifyTaskStatus,
 } from "../lib/task-notifications.js";
+
+const ASSIGNEE_STATUS_VALUES = new Set<TaskStatus>([
+  TaskStatus.IN_PROGRESS,
+  TaskStatus.ON_HOLD,
+  TaskStatus.DONE,
+]);
+
+const taskUploadDir = taskUploadRoot();
 
 const router = Router();
 router.use(requireAuth);
@@ -117,6 +135,25 @@ function serializeActivity(a: {
   };
 }
 
+function serializeAttachment(a: {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: number;
+  createdAt: Date;
+  uploadedBy: { id: string; displayName: string };
+}) {
+  return {
+    id: a.id,
+    originalName: a.originalName,
+    mimeType: a.mimeType,
+    fileSize: a.fileSize,
+    createdAt: a.createdAt,
+    uploadedById: a.uploadedBy.id,
+    uploadedByName: a.uploadedBy.displayName,
+  };
+}
+
 function serializeFollowUp(f: {
   id: string;
   scheduledAt: Date;
@@ -187,10 +224,15 @@ router.get("/meta/assignees", requireAuth, async (req, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  const createdTask = await prisma.task.findFirst({
+    where: { createdById: actor.id },
+    select: { id: true },
+  });
   const canPick =
     (await canCreateTask(actor)) ||
     (await canEditAnyTask(actor)) ||
-    actor.role === "ADMIN";
+    actor.role === "ADMIN" ||
+    createdTask !== null;
   if (!canPick) {
     res.status(403).json({ error: "Forbidden" });
     return;
@@ -311,6 +353,12 @@ router.get("/:id", requireAuth, async (req, res) => {
           createdBy: { select: { id: true, displayName: true } },
         },
       },
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          uploadedBy: { select: { id: true, displayName: true } },
+        },
+      },
     },
   });
   if (!task) {
@@ -321,10 +369,13 @@ router.get("/:id", requireAuth, async (req, res) => {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
+  const viewerRole = await resolveTaskViewerRole(actor, task);
   res.json({
     ...serializeTaskListRow(task),
+    viewerRole,
     followUps: task.followUps.map(serializeFollowUp),
     activities: task.activities.map(serializeActivity),
+    attachments: task.attachments.map(serializeAttachment),
   });
 });
 
@@ -362,12 +413,20 @@ router.patch("/:id", requireAuth, async (req, res) => {
     data.productId !== undefined ||
     data.purchaseId !== undefined;
 
-  if (wantsFieldEdit && !(await canEditTaskFields(actor, existing))) {
+  if (wantsFieldEdit && !(await canManageTask(actor, existing))) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
   if (data.status !== undefined && !(await canChangeTaskStatus(actor, existing))) {
     res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (
+    data.status !== undefined &&
+    !(await canManageTask(actor, existing)) &&
+    !ASSIGNEE_STATUS_VALUES.has(data.status)
+  ) {
+    res.status(403).json({ error: "Assignees can only set in progress, on hold, or done" });
     return;
   }
 
@@ -556,6 +615,10 @@ router.post("/:id/follow-ups", requireAuth, async (req, res) => {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
+  if (!(await canManageTask(actor, task))) {
+    res.status(403).json({ error: "Only the task owner or managers can schedule follow-ups" });
+    return;
+  }
   const assigneeId = parsed.data.assigneeId ?? task.assigneeId;
   const actorUser = await prisma.user.findUnique({
     where: { id: actor.id },
@@ -629,6 +692,14 @@ router.patch("/:id/follow-ups/:followUpId", requireAuth, async (req, res) => {
       res.status(400).json({ error: "Follow-up already completed" });
       return;
     }
+    const canCompleteFollowUp =
+      (await canManageTask(actor, task)) ||
+      existing.assigneeId === actor.id ||
+      task.assigneeId === actor.id;
+    if (!canCompleteFollowUp) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const followUp = await prisma.$transaction(async (tx) => {
       const row = await tx.taskFollowUp.update({
         where: { id: followUpId },
@@ -651,6 +722,159 @@ router.patch("/:id/follow-ups/:followUpId", requireAuth, async (req, res) => {
       return row;
     });
     res.json(serializeFollowUp(followUp));
+});
+
+router.post("/:id/attachments", requireAuth, (req, res, next) => {
+  taskPhotoUpload.single("photo")(req, res, (err: unknown) => {
+    if (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      res.status(400).json({ error: msg });
+      return;
+    }
+    next();
+  });
+}, async (req, res) => {
+  const taskId = String(req.params.id);
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "Photo file is required" });
+    return;
+  }
+  const actor = await getTaskActor(req.user!.sub);
+  if (!actor) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  if (!task) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (!(await canUploadTaskAttachment(actor, task))) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const relPath = path.relative(taskUploadDir, file.path);
+  const storedPath =
+    relPath && !relPath.startsWith("..") ? relPath : path.basename(file.path);
+  const actorUser = await prisma.user.findUnique({
+    where: { id: actor.id },
+    select: { displayName: true },
+  });
+  const attachment = await prisma.$transaction(async (tx) => {
+    const row = await tx.taskAttachment.create({
+      data: {
+        taskId,
+        storedPath,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        fileSize: file.size,
+        uploadedById: actor.id,
+      },
+      include: {
+        uploadedBy: { select: { id: true, displayName: true } },
+      },
+    });
+    await tx.taskActivity.create({
+      data: {
+        taskId,
+        type: TaskActivityType.ATTACHMENT_ADDED,
+        body: `Photo added: ${file.originalname}`,
+        createdById: actor.id,
+      },
+    });
+    return row;
+  });
+  if (task.createdById !== actor.id && task.assigneeId === actor.id) {
+    await notifyTaskStatus({
+      recipientId: task.createdById,
+      taskId,
+      title: task.title,
+      actorName: actorUser?.displayName ?? "Assignee",
+      statusLabel: "photo uploaded",
+    });
+  }
+  res.status(201).json(serializeAttachment(attachment));
+});
+
+router.get("/:id/attachments/:attachmentId/file", requireAuth, async (req, res) => {
+  const taskId = String(req.params.id);
+  const attachmentId = String(req.params.attachmentId);
+  const actor = await getTaskActor(req.user!.sub);
+  if (!actor) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  if (!task) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (!(await canViewTask(actor, task))) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const attachment = await prisma.taskAttachment.findFirst({
+    where: { id: attachmentId, taskId },
+  });
+  if (!attachment) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  let abs: string;
+  try {
+    abs = resolveTaskAttachmentPath(attachment.storedPath);
+  } catch {
+    res.status(400).json({ error: "Invalid file path" });
+    return;
+  }
+  if (!fs.existsSync(abs)) {
+    res.status(404).json({ error: "File missing on server" });
+    return;
+  }
+  res.setHeader("Content-Type", attachment.mimeType);
+  res.setHeader(
+    "Content-Disposition",
+    `inline; filename="${attachment.originalName.replace(/"/g, "")}"`,
+  );
+  res.sendFile(abs);
+});
+
+router.delete("/:id/attachments/:attachmentId", requireAuth, async (req, res) => {
+  const taskId = String(req.params.id);
+  const attachmentId = String(req.params.attachmentId);
+  const actor = await getTaskActor(req.user!.sub);
+  if (!actor) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  if (!task) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const attachment = await prisma.taskAttachment.findFirst({
+    where: { id: attachmentId, taskId },
+  });
+  if (!attachment) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const isManager = await canManageTask(actor, task);
+  if (!isManager && attachment.uploadedById !== actor.id) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  try {
+    const abs = resolveTaskAttachmentPath(attachment.storedPath);
+    if (fs.existsSync(abs)) {
+      fs.unlinkSync(abs);
+    }
+  } catch {
+    /* ignore missing file on disk */
+  }
+  await prisma.taskAttachment.delete({ where: { id: attachmentId } });
+  res.status(204).send();
 });
 
 export default router;
