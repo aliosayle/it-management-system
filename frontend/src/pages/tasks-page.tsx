@@ -10,6 +10,7 @@ import {
 } from "devextreme-react/data-grid";
 import Button from "devextreme-react/button";
 import Popup from "devextreme-react/popup";
+import PopupDx from "devextreme-react/popup";
 import SelectBox from "devextreme-react/select-box";
 import TextArea from "devextreme-react/text-area";
 import TextBox from "devextreme-react/text-box";
@@ -278,15 +279,6 @@ export default function TasksPage() {
     }
   };
 
-  const canEditDetail =
-    canEdit ||
-    user?.role === "ADMIN" ||
-    detail?.createdById === user?.id ||
-    detail?.assigneeId === user?.id;
-
-  const canEditFields =
-    canEdit || user?.role === "ADMIN" || detail?.createdById === user?.id;
-
   const activityLine = (a: TaskActivity) => {
     if (a.type === "COMMENT") return a.body ?? "";
     if (a.type === "STATUS_CHANGE" && a.toStatus) {
@@ -294,6 +286,216 @@ export default function TasksPage() {
     }
     return a.body ?? a.type.replace(/_/g, " ").toLowerCase();
   };
+
+  /** contentRender keeps the form inside the popup overlay (avoids empty popup + content behind the grid). */
+  const renderDetailPopupContent = useCallback(() => {
+    if (!detail) {
+      return <div className="task-detail" style={{ minHeight: 48 }} />;
+    }
+
+    const canEditDetailNow =
+      canEdit ||
+      user?.role === "ADMIN" ||
+      detail.createdById === user?.id ||
+      detail.assigneeId === user?.id;
+    const canEditFieldsNow =
+      canEdit || user?.role === "ADMIN" || detail.createdById === user?.id;
+
+    return (
+      <div className="task-detail">
+        <div className="task-detail__fields">
+          <div className="task-detail__row">
+            <label>Title</label>
+            <TextBox
+              value={detail.title}
+              readOnly={!canEditFieldsNow}
+              onValueChanged={(e) =>
+                setDetail((d) => (d ? { ...d, title: String(e.value ?? "") } : d))
+              }
+            />
+          </div>
+          <div className="task-detail__row task-detail__row--cols">
+            <div>
+              <label>Status</label>
+              <SelectBox
+                dataSource={[...TASK_STATUS_OPTIONS]}
+                displayExpr="text"
+                valueExpr="value"
+                value={detail.status}
+                readOnly={!canEditDetailNow}
+                onValueChanged={(e) =>
+                  setDetail((d) => (d ? { ...d, status: String(e.value) } : d))
+                }
+              />
+            </div>
+            <div>
+              <label>Priority</label>
+              <SelectBox
+                dataSource={[...TASK_PRIORITY_OPTIONS]}
+                displayExpr="text"
+                valueExpr="value"
+                value={detail.priority}
+                readOnly={!canEditFieldsNow}
+                onValueChanged={(e) =>
+                  setDetail((d) => (d ? { ...d, priority: String(e.value) } : d))
+                }
+              />
+            </div>
+            <div>
+              <label>Due</label>
+              <DateBox
+                type="datetime"
+                value={detail.dueAt ? new Date(detail.dueAt) : null}
+                readOnly={!canEditFieldsNow}
+                showClearButton
+                onValueChanged={(e) =>
+                  setDetail((d) =>
+                    d
+                      ? {
+                          ...d,
+                          dueAt: e.value ? (e.value as Date).toISOString() : null,
+                        }
+                      : d,
+                  )
+                }
+              />
+            </div>
+          </div>
+          <div className="task-detail__row">
+            <label>Assignee</label>
+            <SelectBox
+              dataSource={userOptions}
+              displayExpr="label"
+              valueExpr="id"
+              value={detail.assigneeId}
+              readOnly={!canEditFieldsNow}
+              searchEnabled
+              onValueChanged={(e) =>
+                setDetail((d) => (d ? { ...d, assigneeId: e.value as string } : d))
+              }
+            />
+          </div>
+          <div className="task-detail__row">
+            <label>Description</label>
+            <TextArea
+              height={80}
+              value={detail.description ?? ""}
+              readOnly={!canEditFieldsNow}
+              onValueChanged={(e) =>
+                setDetail((d) =>
+                  d ? { ...d, description: String(e.value ?? "") } : d,
+                )
+              }
+            />
+          </div>
+          {canEditDetailNow ? (
+            <div className="task-detail__actions">
+              <Button
+                text="Save"
+                type="default"
+                stylingMode="contained"
+                disabled={detailSaving}
+                onClick={() => void saveDetail()}
+              />
+              {canDelete || detail.createdById === user?.id ? (
+                <Button
+                  text="Delete"
+                  stylingMode="outlined"
+                  onClick={() => void deleteTask()}
+                />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="task-detail__section">
+          <h3>Follow-ups</h3>
+          <ul className="task-follow-up-list">
+            {detail.followUps.map((f) => (
+              <li key={f.id} className={f.completedAt ? "is-done" : ""}>
+                <span>
+                  {new Date(f.scheduledAt).toLocaleString()} — {f.assigneeName}
+                  {f.note ? `: ${f.note}` : ""}
+                </span>
+                {!f.completedAt && canEditDetailNow ? (
+                  <Button
+                    text="Complete"
+                    stylingMode="text"
+                    onClick={() => void completeFollowUp(f.id)}
+                  />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {canEditDetailNow ? (
+            <div className="task-follow-up-form">
+              <DateBox
+                type="datetime"
+                placeholder="Follow-up date"
+                value={followUpDate}
+                onValueChanged={(e) => setFollowUpDate((e.value as Date) ?? null)}
+              />
+              <TextBox
+                placeholder="Note (optional)"
+                value={followUpNote}
+                onValueChanged={(e) => setFollowUpNote(String(e.value ?? ""))}
+              />
+              <Button
+                text="Schedule"
+                type="default"
+                stylingMode="contained"
+                onClick={() => void scheduleFollowUp()}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="task-detail__section">
+          <h3>Activity</h3>
+          <ul className="task-activity-list">
+            {detail.activities.map((a) => (
+              <li key={a.id}>
+                <span className="task-activity-list__meta">
+                  {new Date(a.createdAt).toLocaleString()} · {a.createdByName}
+                  {a.type === "COMMENT"
+                    ? ""
+                    : ` · ${a.type.replace(/_/g, " ").toLowerCase()}`}
+                </span>
+                <span className="task-activity-list__body">{activityLine(a)}</span>
+              </li>
+            ))}
+          </ul>
+          {canEditDetailNow ? (
+            <div className="task-comment-form">
+              <TextArea
+                height={72}
+                placeholder="Add a comment…"
+                value={commentText}
+                onValueChanged={(e) => setCommentText(String(e.value ?? ""))}
+              />
+              <Button
+                text="Post comment"
+                stylingMode="contained"
+                type="default"
+                onClick={() => void submitComment()}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }, [
+    detail,
+    canEdit,
+    canDelete,
+    user?.id,
+    user?.role,
+    userOptions,
+    detailSaving,
+    commentText,
+    followUpDate,
+    followUpNote,
+  ]);
 
   return (
     <PageReadGuard resource="tasks">
@@ -443,7 +645,7 @@ export default function TasksPage() {
           </div>
         </Popup>
 
-        <Popup
+        <PopupDx
           visible={detailOpen}
           onHiding={() => {
             setDetailOpen(false);
@@ -453,192 +655,11 @@ export default function TasksPage() {
           showTitle
           width={860}
           height="90vh"
+          wrapperAttr={{ class: "task-detail-popup-shell" }}
           showCloseButton
-        >
-          {detail ? (
-            <div className="task-detail">
-              <div className="task-detail__fields">
-                <div className="task-detail__row">
-                  <label>Title</label>
-                  <TextBox
-                    value={detail.title}
-                    readOnly={!canEditFields}
-                    onValueChanged={(e) =>
-                      setDetail((d) => (d ? { ...d, title: String(e.value ?? "") } : d))
-                    }
-                  />
-                </div>
-                <div className="task-detail__row task-detail__row--cols">
-                  <div>
-                    <label>Status</label>
-                    <SelectBox
-                      dataSource={[...TASK_STATUS_OPTIONS]}
-                      displayExpr="text"
-                      valueExpr="value"
-                      value={detail.status}
-                      readOnly={!canEditDetail}
-                      onValueChanged={(e) =>
-                        setDetail((d) => (d ? { ...d, status: String(e.value) } : d))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label>Priority</label>
-                    <SelectBox
-                      dataSource={[...TASK_PRIORITY_OPTIONS]}
-                      displayExpr="text"
-                      valueExpr="value"
-                      value={detail.priority}
-                      readOnly={!canEditFields}
-                      onValueChanged={(e) =>
-                        setDetail((d) => (d ? { ...d, priority: String(e.value) } : d))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label>Due</label>
-                    <DateBox
-                      type="datetime"
-                      value={detail.dueAt ? new Date(detail.dueAt) : null}
-                      readOnly={!canEditFields}
-                      showClearButton
-                      onValueChanged={(e) =>
-                        setDetail((d) =>
-                          d
-                            ? {
-                                ...d,
-                                dueAt: e.value ? (e.value as Date).toISOString() : null,
-                              }
-                            : d,
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="task-detail__row">
-                  <label>Assignee</label>
-                  <SelectBox
-                    dataSource={userOptions}
-                    displayExpr="label"
-                    valueExpr="id"
-                    value={detail.assigneeId}
-                    readOnly={!canEditFields}
-                    searchEnabled
-                    onValueChanged={(e) =>
-                      setDetail((d) =>
-                        d ? { ...d, assigneeId: e.value as string } : d,
-                      )
-                    }
-                  />
-                </div>
-                <div className="task-detail__row">
-                  <label>Description</label>
-                  <TextArea
-                    height={80}
-                    value={detail.description ?? ""}
-                    readOnly={!canEditFields}
-                    onValueChanged={(e) =>
-                      setDetail((d) =>
-                        d ? { ...d, description: String(e.value ?? "") } : d,
-                      )
-                    }
-                  />
-                </div>
-                {canEditDetail ? (
-                  <div className="task-detail__actions">
-                    <Button
-                      text="Save"
-                      type="default"
-                      stylingMode="contained"
-                      disabled={detailSaving}
-                      onClick={() => void saveDetail()}
-                    />
-                    {(canDelete || detail.createdById === user?.id) ? (
-                      <Button
-                        text="Delete"
-                        stylingMode="outlined"
-                        onClick={() => void deleteTask()}
-                      />
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="task-detail__section">
-                <h3>Follow-ups</h3>
-                <ul className="task-follow-up-list">
-                  {detail.followUps.map((f) => (
-                    <li key={f.id} className={f.completedAt ? "is-done" : ""}>
-                      <span>
-                        {new Date(f.scheduledAt).toLocaleString()} — {f.assigneeName}
-                        {f.note ? `: ${f.note}` : ""}
-                      </span>
-                      {!f.completedAt && canEditDetail ? (
-                        <Button
-                          text="Complete"
-                          stylingMode="text"
-                          onClick={() => void completeFollowUp(f.id)}
-                        />
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-                {canEditDetail ? (
-                  <div className="task-follow-up-form">
-                    <DateBox
-                      type="datetime"
-                      placeholder="Follow-up date"
-                      value={followUpDate}
-                      onValueChanged={(e) => setFollowUpDate((e.value as Date) ?? null)}
-                    />
-                    <TextBox
-                      placeholder="Note (optional)"
-                      value={followUpNote}
-                      onValueChanged={(e) => setFollowUpNote(String(e.value ?? ""))}
-                    />
-                    <Button
-                      text="Schedule"
-                      type="default"
-                      stylingMode="contained"
-                      onClick={() => void scheduleFollowUp()}
-                    />
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="task-detail__section">
-                <h3>Activity</h3>
-                <ul className="task-activity-list">
-                  {detail.activities.map((a) => (
-                    <li key={a.id}>
-                      <span className="task-activity-list__meta">
-                        {new Date(a.createdAt).toLocaleString()} · {a.createdByName}
-                        {a.type === "COMMENT" ? "" : ` · ${a.type.replace(/_/g, " ").toLowerCase()}`}
-                      </span>
-                      <span className="task-activity-list__body">{activityLine(a)}</span>
-                    </li>
-                  ))}
-                </ul>
-                {canEditDetail ? (
-                  <div className="task-comment-form">
-                    <TextArea
-                      height={72}
-                      placeholder="Add a comment…"
-                      value={commentText}
-                      onValueChanged={(e) => setCommentText(String(e.value ?? ""))}
-                    />
-                    <Button
-                      text="Post comment"
-                      stylingMode="contained"
-                      type="default"
-                      onClick={() => void submitComment()}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-        </Popup>
+          deferRendering={false}
+          contentRender={renderDetailPopupContent}
+        />
       </div>
     </PageReadGuard>
   );

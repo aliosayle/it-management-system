@@ -1,3 +1,16 @@
+.task-detail-popup-shell.dx-popup-wrapper .dx-overlay-content {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+.task-detail-popup-shell .dx-popup-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--base-bg, #fff);
+}
+
 .task-due-overdue {
   color: #c62828;
   font-weight: 600;
@@ -27,9 +40,9 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-height: calc(90vh - 80px);
-  overflow: auto;
   padding: 4px 8px 16px;
+  background: var(--base-bg, #fff);
+  color: var(--base-text-color, #111);
 
   &__fields {
     display: flex;
