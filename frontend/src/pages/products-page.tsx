@@ -837,7 +837,7 @@ export default function ProductsPage() {
           allowEditing={false}
           formItem={{ visible: false }}
         />
-        <Column type="buttons" width={132}>
+        <Column type="buttons" width={100}>
           <ColumnButton name="edit" disabled={!canEdit} />
           <ColumnButton
             hint="New stock movement"

@@ -318,12 +318,11 @@ export default function PersonnelPage() {
               editorOptions: { readOnly: true },
             }}
           />
-          <Column type="buttons" width={168}>
+          <Column type="buttons" width={96}>
             <ColumnButton name="edit" disabled={!canEdit} />
             <ColumnButton
               hint="View"
               icon="eyeopen"
-              text="View"
               disabled={!canRead}
               onClick={(e) => {
                 if (e.row?.isNewRow) {

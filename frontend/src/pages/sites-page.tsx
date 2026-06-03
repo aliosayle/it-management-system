@@ -169,7 +169,7 @@ export default function SitesPage() {
           allowEditing={false}
           formItem={{ visible: false }}
         />
-        <Column type="buttons" width={140}>
+        <Column type="buttons" width={88}>
           <ColumnButton name="edit" disabled={!canEdit} />
           <ColumnButton
             hint="Site bin — equipment and consumables at this location"

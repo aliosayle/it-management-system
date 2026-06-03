@@ -237,12 +237,11 @@ export default function SuppliersPage() {
             allowEditing={false}
             formItem={{ visible: false }}
           />
-          <Column type="buttons" width={100}>
+          <Column type="buttons" width={88}>
             <ColumnButton name="edit" disabled={!canEdit} />
             <ColumnButton
               hint="Purchase history"
               icon="orderedlist"
-              text="History"
               disabled={!canRead}
               onClick={(e) => {
                 const row = e.row?.data as Record<string, unknown> | undefined;

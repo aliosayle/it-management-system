@@ -125,6 +125,7 @@ export function UserPermissionsMatrix({
           Add, edit, and delete automatically require read and view. Read requires view.
         </p>
         <DataGrid
+          className="dx-datagrid-app"
           dataSource={dataSource}
           keyExpr="resource"
           showBorders

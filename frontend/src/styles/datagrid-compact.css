@@ -22,13 +22,13 @@
 
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-data-row,
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-data-row > td {
-  height: 24px;
-  max-height: 24px;
+  height: 22px;
+  max-height: 22px;
 }
 
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-freespace-row,
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-virtual-row {
-  height: 24px;
+  height: 22px;
 }
 
 .dx-datagrid.dx-datagrid-app .dx-datagrid-filter-row td {
@@ -63,20 +63,103 @@
   padding: 0 4px;
 }
 
-/* Command / link buttons inside cells */
-.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button {
-  min-height: 20px;
-  height: 20px;
+/* Icons — Fluent defaults to 20px; shrink everywhere in app grids */
+.dx-datagrid.dx-datagrid-app .dx-icon,
+.dx-datagrid.dx-datagrid-app .dx-icon::before {
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  line-height: 14px;
+  background-size: 14px 14px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-column-indicators .dx-icon,
+.dx-datagrid.dx-datagrid-app .dx-column-indicators .dx-icon::before {
+  width: 12px;
+  height: 12px;
+  font-size: 12px;
+  line-height: 12px;
+  background-size: 12px 12px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-column-indicators .dx-sort-index-icon {
+  width: 10px;
+}
+
+/* Command column: edit / delete / custom icon links */
+.dx-datagrid.dx-datagrid-app .dx-command-edit .dx-link {
+  font-size: 14px;
+  line-height: 14px;
+  margin: 0 2px;
+}
+
+/* Buttons in data rows (custom ColumnButton, adaptive, etc.) */
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button.dx-button-has-icon {
+  min-width: 22px;
+  width: 22px;
+  height: 22px;
 }
 
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button .dx-button-content {
-  padding: 0 5px;
-  line-height: 18px;
+  padding: 1px 2px;
+  line-height: 1;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button .dx-icon {
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button-has-text {
+  min-width: 0;
+  width: auto;
+  height: 22px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button-has-text .dx-button-content {
+  padding: 1px 6px;
   font-size: 11px;
+  line-height: 1.15;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button-has-icon.dx-button-has-text .dx-icon {
+  margin-inline-end: 4px;
 }
 
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-link {
   font-size: 11px;
+}
+
+/* Grid toolbar (search, export, column chooser, add row) */
+.dx-datagrid.dx-datagrid-app .dx-datagrid-header-panel .dx-button,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-header-panel .dx-button.dx-button-has-icon {
+  min-width: 26px;
+  height: 26px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-header-panel .dx-button .dx-icon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-addrow-button .dx-icon-edit-button-addrow,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-cancel-button .dx-icon-edit-button-cancel,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-save-button .dx-icon-edit-button-save {
+  font: 14px/14px DXIcons;
+  width: 14px;
+  height: 14px;
+  background-size: 14px 14px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-adaptive-more {
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  line-height: 14px;
+  background-size: 14px 14px;
 }
 
 .dx-datagrid.dx-datagrid-app .dx-datagrid-checkbox-size {

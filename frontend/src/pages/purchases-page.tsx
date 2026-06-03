@@ -925,11 +925,10 @@ export default function PurchasesPage() {
             width={92}
           />
           <Column dataField="createdByName" caption="Recorded by" width={96} minWidth={72} />
-          <Column type="buttons" width={118} allowResizing={false}>
+          <Column type="buttons" width={96} allowResizing={false}>
             <ColumnButton
               hint="Edit"
               icon="edit"
-              text="Edit"
               disabled={!canEdit}
               onClick={(e) => {
                 const row = e.row?.data as PurchaseListRow | undefined;
@@ -939,7 +938,6 @@ export default function PurchasesPage() {
             <ColumnButton
               hint="Download bon"
               icon="download"
-              text="Bon"
               onClick={(e) => {
                 const row = e.row?.data as PurchaseListRow | undefined;
                 if (row) {
@@ -950,7 +948,6 @@ export default function PurchasesPage() {
             <ColumnButton
               hint="Delete"
               icon="trash"
-              text="Del"
               disabled={!canDelete}
               onClick={(e) => {
                 const row = e.row?.data as PurchaseListRow | undefined;
