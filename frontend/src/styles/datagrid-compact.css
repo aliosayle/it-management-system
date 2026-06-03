@@ -1,19 +1,102 @@
-/* Denser rows on all AppDataGrid instances (class dx-datagrid-app on root). */
-.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-row > td,
-.dx-datagrid.dx-datagrid-app .dx-datagrid-headers .dx-header-row > td {
-  padding-top: 2px;
-  padding-bottom: 2px;
-  font-size: 12px;
-  line-height: 1.25;
+/* Loaded after DevExtreme theme (App.tsx) — compact rows on AppDataGrid. */
+
+.dx-datagrid.dx-datagrid-app {
+  font-size: 11px;
+  line-height: 1.15;
 }
 
-.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-data-row {
-  min-height: 26px;
+/* Fluent theme defaults: 14px/16px padding — override for data + header cells */
+.dx-datagrid.dx-datagrid-app .dx-datagrid-content .dx-datagrid-table .dx-row > td,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-content .dx-datagrid-table .dx-row > tr > td,
+.dx-datagrid.dx-datagrid-app .dx-row > td,
+.dx-datagrid.dx-datagrid-app .dx-row > tr > td {
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-table .dx-header-row > td {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-data-row,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-data-row > td {
+  height: 24px;
+  max-height: 24px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-freespace-row,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-virtual-row {
+  height: 24px;
 }
 
 .dx-datagrid.dx-datagrid-app .dx-datagrid-filter-row td {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-total-footer .dx-row > td {
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-master-detail-row > td {
+  padding: 2px 6px;
+}
+
+/* In-cell editors (edit row / filter row) */
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-texteditor,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-filter-row .dx-texteditor {
+  min-height: 20px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-texteditor-input,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-filter-row .dx-texteditor-input {
+  min-height: 18px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 11px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-filter-row .dx-editor-cell {
+  padding: 0 4px;
+}
+
+/* Command / link buttons inside cells */
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button {
+  min-height: 20px;
+  height: 20px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button .dx-button-content {
+  padding: 0 5px;
+  line-height: 18px;
+  font-size: 11px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-link {
+  font-size: 11px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-checkbox-size {
+  line-height: 16px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-checkbox-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-header-panel .dx-toolbar {
+  margin-bottom: 4px;
+  min-height: 32px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-pager {
   padding-top: 2px;
-  padding-bottom: 2px;
+  padding-bottom: 0;
+  font-size: 11px;
 }
 
 .app-data-grid-shell {
@@ -31,18 +114,18 @@
 
 .app-data-grid-shell__filter-builder {
   flex: 0 0 auto;
-  max-height: 220px;
+  max-height: 180px;
   overflow: auto;
   border-top: 1px solid var(--app-border-subtle, rgba(128, 128, 128, 0.35));
-  padding: 8px 10px 10px;
+  padding: 6px 8px 8px;
   background: var(--base-bg, #fff);
 }
 
 .app-data-grid-shell__filter-builder-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.7;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }

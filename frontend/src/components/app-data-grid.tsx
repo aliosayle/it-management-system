@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useCallback,
+  useRef,
   useState,
   type ComponentPropsWithoutRef,
   type ReactNode,
@@ -8,6 +9,7 @@ import {
 import type { ToolbarPreparingEvent } from "devextreme/ui/data_grid";
 import type { OptionChangedEvent } from "devextreme/ui/data_grid";
 import type dxDataGrid from "devextreme/ui/data_grid";
+import type dxFilterBuilder from "devextreme/ui/filter_builder";
 import type { Field } from "devextreme/ui/filter_builder";
 import { usePagePermissions } from "../hooks/use-permissions";
 import type { PermissionResource } from "../lib/permissions";
@@ -18,7 +20,9 @@ import DataGrid, {
   HeaderFilter,
   StateStoring,
 } from "devextreme-react/data-grid";
-import FilterBuilder from "devextreme-react/filter-builder";
+import FilterBuilder, {
+  type FilterBuilderRef,
+} from "devextreme-react/filter-builder";
 import notify from "devextreme/ui/notify";
 import type { ContentReadyEvent, ExportingEvent } from "devextreme/ui/data_grid";
 import { getErrorMessage } from "../utils/error-message";
@@ -66,6 +70,20 @@ function buildFilterFields(grid: dxDataGrid): Field[] {
       }
       return field;
     });
+}
+
+function filterFieldsSignature(fields: Field[]): string {
+  return fields.map((f) => `${f.dataField}:${f.dataType ?? ""}`).join("|");
+}
+
+function filterValuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null && b == null) return true;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
 }
 
 export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
@@ -201,7 +219,6 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       onExporting: onExportingProp,
       onToolbarPreparing: onToolbarPreparingProp,
       onOptionChanged: onOptionChangedProp,
-      filterValue: filterValueProp,
       summary,
       columnFixing,
       groupPanel,
@@ -219,8 +236,39 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
     const canAdd = pagePerms.canAdd;
     const showAdd = showAddRowButton !== false;
 
+    const gridRef = useRef<DataGridRef>(null);
+    const filterBuilderRef = useRef<FilterBuilderRef>(null);
+    const filterFieldsSigRef = useRef("");
+    const syncingFilterRef = useRef(false);
     const [filterFields, setFilterFields] = useState<Field[]>([]);
-    const [filterValue, setFilterValue] = useState<any>(filterValueProp);
+
+    const combinedGridRef = useCallback(
+      (node: DataGridRef | null) => {
+        gridRef.current = node;
+        if (typeof ref === "function") {
+          ref(node);
+        } else if (ref) {
+          ref.current = node;
+        }
+      },
+      [ref],
+    );
+
+    const getGrid = useCallback((): dxDataGrid | null => {
+      try {
+        return gridRef.current?.instance() ?? null;
+      } catch {
+        return null;
+      }
+    }, []);
+
+    const getFilterBuilder = useCallback((): dxFilterBuilder | null => {
+      try {
+        return filterBuilderRef.current?.instance() ?? null;
+      } catch {
+        return null;
+      }
+    }, []);
 
     const handleToolbarPreparing = useCallback(
       (e: ToolbarPreparingEvent) => {
@@ -313,14 +361,58 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       loadPanel as Partial<{ enabled: boolean | "auto" }> | undefined,
     );
 
+    const applyFilterToGrid = useCallback(
+      (value: unknown) => {
+        const grid = getGrid();
+        if (!grid) return;
+        const current = grid.option("filterValue");
+        if (filterValuesEqual(current, value)) return;
+        syncingFilterRef.current = true;
+        try {
+          grid.option("filterValue", value as never);
+        } finally {
+          queueMicrotask(() => {
+            syncingFilterRef.current = false;
+          });
+        }
+      },
+      [getGrid],
+    );
+
+    const applyFilterToBuilder = useCallback(
+      (value: unknown) => {
+        const fb = getFilterBuilder();
+        if (!fb) return;
+        const current = fb.option("value");
+        if (filterValuesEqual(current, value)) return;
+        syncingFilterRef.current = true;
+        try {
+          fb.option("value", value as never);
+        } finally {
+          queueMicrotask(() => {
+            syncingFilterRef.current = false;
+          });
+        }
+      },
+      [getFilterBuilder],
+    );
+
+    const handleFilterBuilderValueChanged = useCallback(
+      (e: { value?: unknown }) => {
+        applyFilterToGrid(e.value);
+      },
+      [applyFilterToGrid],
+    );
+
     const handleOptionChanged = useCallback(
       (e: OptionChangedEvent) => {
         onOptionChangedProp?.(e);
-        if (showFilterBuilder && e.fullName === "filterValue") {
-          setFilterValue(e.value);
+        if (!showFilterBuilder || e.fullName !== "filterValue" || syncingFilterRef.current) {
+          return;
         }
+        applyFilterToBuilder(e.value);
       },
-      [onOptionChangedProp, showFilterBuilder],
+      [onOptionChangedProp, showFilterBuilder, applyFilterToBuilder],
     );
 
     const handleContentReady = useCallback(
@@ -330,10 +422,17 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         queueMicrotask(() => {
           try {
             if (showFilterBuilder) {
-              setFilterFields(buildFilterFields(grid));
-              const stored = grid.option("filterValue");
-              if (stored !== undefined && stored !== null) {
-                setFilterValue(stored);
+              const fields = buildFilterFields(grid);
+              const sig = filterFieldsSignature(fields);
+              if (sig && sig !== filterFieldsSigRef.current) {
+                filterFieldsSigRef.current = sig;
+                setFilterFields(fields);
+                const initial = grid.option("filterValue");
+                queueMicrotask(() => {
+                  if (initial !== undefined && initial !== null) {
+                    applyFilterToBuilder(initial);
+                  }
+                });
               }
             }
             if (autoNumericFooter !== false) {
@@ -344,7 +443,7 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
           }
         });
       },
-      [onContentReady, autoNumericFooter, showFilterBuilder],
+      [onContentReady, autoNumericFooter, showFilterBuilder, applyFilterToBuilder],
     );
 
     const shellStyle =
@@ -359,7 +458,7 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       >
         <div className="app-data-grid-shell__grid">
           <DataGrid
-            ref={ref}
+            ref={combinedGridRef}
             className={["dx-datagrid-app", "dx-card", "wide-card"].filter(Boolean).join(" ")}
             showBorders={showBorders ?? true}
             showColumnLines={rest.showColumnLines ?? true}
@@ -380,7 +479,6 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
             columnChooser={columnChooserOpts}
             loadPanel={loadPanelOpts}
             summary={summary}
-            filterValue={showFilterBuilder ? filterValue : filterValueProp}
             onContentReady={handleContentReady}
             onExporting={handleExporting}
             onToolbarPreparing={handleToolbarPreparing}
@@ -406,14 +504,16 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
             {children}
           </DataGrid>
         </div>
-        {showFilterBuilder && filterFields.length > 0 ? (
+        {showFilterBuilder ? (
           <div className="app-data-grid-shell__filter-builder">
             <div className="app-data-grid-shell__filter-builder-label">Filter</div>
-            <FilterBuilder
-              fields={filterFields}
-              value={filterValue}
-              onValueChanged={(e) => setFilterValue(e.value)}
-            />
+            {filterFields.length > 0 ? (
+              <FilterBuilder
+                ref={filterBuilderRef}
+                fields={filterFields}
+                onValueChanged={handleFilterBuilderValueChanged}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>

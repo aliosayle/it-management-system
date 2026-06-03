@@ -6,6 +6,7 @@ import './themes/generated/theme.additional.dark.css';
 import './themes/generated/theme.additional.css';
 import { HashRouter as Router } from 'react-router-dom';
 import './dx-styles.scss';
+import './styles/datagrid-compact.css';
 import LoadPanel from 'devextreme-react/load-panel';
 import { dismissDevExtremeTrialPanel } from './utils/dismissDevExtremeTrialPanel';
 import { NavigationProvider } from './contexts/navigation';
