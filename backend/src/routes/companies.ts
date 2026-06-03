@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -15,12 +16,12 @@ const updateSchema = z.object({
   name: z.string().trim().min(1).optional(),
 });
 
-router.get("/", async (_req, res) => {
+router.get("/", requirePermission("companies", "read"), async (_req, res) => {
   const list = await prisma.company.findMany({ orderBy: { name: "asc" } });
   res.json(list);
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("companies", "add"), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -38,7 +39,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requirePermission("companies", "read"), async (req, res) => {
   const row = await prisma.company.findUnique({ where: { id: req.params.id } });
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -47,7 +48,7 @@ router.get("/:id", async (req, res) => {
   res.json(row);
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requirePermission("companies", "edit"), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -74,7 +75,7 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("companies", "delete"), async (req, res) => {
   try {
     await prisma.company.delete({ where: { id: req.params.id } });
     res.status(204).send();

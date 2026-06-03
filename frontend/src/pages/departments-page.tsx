@@ -12,12 +12,15 @@ import {
 } from "devextreme-react/data-grid";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { PageReadGuard } from "../components/require-page-access";
+import { usePagePermissions } from "../hooks/use-permissions";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 
 type SiteOpt = { id: string; label: string };
 
 export default function DepartmentsPage() {
+  const { canAdd, canEdit, canDelete } = usePagePermissions("departments");
   const [sites, setSites] = useState<SiteOpt[]>([]);
 
   useEffect(() => {
@@ -60,6 +63,7 @@ export default function DepartmentsPage() {
   );
 
   return (
+    <PageReadGuard resource="departments">
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
         <h2>Departments</h2>
@@ -69,6 +73,7 @@ export default function DepartmentsPage() {
       </p>
       <div className="page-grid-body">
         <AppDataGrid
+          permissionResource="departments"
           persistenceKey="itm-grid-departments"
           dataSource={dataSource}
           repaintChangesOnly
@@ -77,7 +82,13 @@ export default function DepartmentsPage() {
             notify(getDataGridErrorMessage(e), "error", 5000);
           }}
         >
-          <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
+          <Editing
+            allowAdding={canAdd}
+            allowUpdating={canEdit}
+            allowDeleting={canDelete}
+            mode="popup"
+            useIcons
+          >
             <Popup title="Department" showTitle width={480} height="auto" />
           </Editing>
           <FilterRow visible />
@@ -123,13 +134,14 @@ export default function DepartmentsPage() {
             formItem={{ visible: false }}
           />
           <Column type="buttons" width={100}>
-            <ColumnButton name="edit" />
-            <ColumnButton name="delete" />
+            <ColumnButton name="edit" disabled={!canEdit} />
+            <ColumnButton name="delete" disabled={!canDelete} />
           </Column>
           <Paging defaultPageSize={20} />
           <Pager showPageSizeSelector showInfo />
         </AppDataGrid>
       </div>
     </div>
+    </PageReadGuard>
   );
 }

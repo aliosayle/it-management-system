@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { applyBinQuantityChange } from "../lib/personnel-bin-stock.js";
+import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -64,7 +65,7 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
 });
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("sites", "read"), async (req, res) => {
   const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
   const list = await prisma.site.findMany({
     where: companyId ? { companyId } : undefined,
@@ -80,7 +81,7 @@ router.get("/", async (req, res) => {
   );
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("sites", "add"), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -107,7 +108,7 @@ router.post("/", async (req, res) => {
 });
 
 /** Site bin items — must be registered before `GET /:id` */
-router.get("/:id/bin/items", async (req, res) => {
+router.get("/:id/bin/items", requirePermission("sites", "read"), async (req, res) => {
   const site = await prisma.site.findUnique({ where: { id: req.params.id } });
   if (!site) {
     res.status(404).json({ error: "Site not found" });
@@ -121,7 +122,7 @@ router.get("/:id/bin/items", async (req, res) => {
   res.json(items.map(siteBinItemJson));
 });
 
-router.post("/:id/bin/items", async (req, res) => {
+router.post("/:id/bin/items", requirePermission("sites", "add"), async (req, res) => {
   const parsed = binItemSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -200,7 +201,7 @@ router.post("/:id/bin/items", async (req, res) => {
   }
 });
 
-router.patch("/:id/bin/items/:itemId", async (req, res) => {
+router.patch("/:id/bin/items/:itemId", requirePermission("sites", "edit"), async (req, res) => {
   const parsed = binPatchSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -276,7 +277,7 @@ router.patch("/:id/bin/items/:itemId", async (req, res) => {
   }
 });
 
-router.delete("/:id/bin/items/:itemId", async (req, res) => {
+router.delete("/:id/bin/items/:itemId", requirePermission("sites", "delete"), async (req, res) => {
   const { id: siteId, itemId } = req.params;
   const actorUserId = req.user!.sub;
 
@@ -330,7 +331,7 @@ router.delete("/:id/bin/items/:itemId", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requirePermission("sites", "read"), async (req, res) => {
   const row = await prisma.site.findUnique({
     where: { id: req.params.id },
     include: { company: { select: { id: true, name: true } } },
@@ -346,7 +347,7 @@ router.get("/:id", async (req, res) => {
   });
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requirePermission("sites", "edit"), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -373,7 +374,7 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("sites", "delete"), async (req, res) => {
   try {
     await prisma.site.delete({ where: { id: req.params.id } });
     res.status(204).send();

@@ -52,9 +52,25 @@ model User {
   role           Role            @default(USER)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
-  stockMovements StockMovement[]
-  personnel      Personnel?
-  purchases      Purchase[]
+  stockMovements     StockMovement[]
+  personnel          Personnel?
+  purchases          Purchase[]
+  pagePermissions    UserPagePermission[]
+}
+
+model UserPagePermission {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resource  String   @db.VarChar(32)
+  canView   Boolean  @default(false)
+  canRead   Boolean  @default(false)
+  canAdd    Boolean  @default(false)
+  canEdit   Boolean  @default(false)
+  canDelete Boolean  @default(false)
+
+  @@unique([userId, resource])
+  @@index([userId])
 }
 
 model Company {

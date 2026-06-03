@@ -4,6 +4,7 @@ import { MovementType, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { movementJson } from "../lib/movement-format.js";
 import { applyStockMovementInTransaction } from "../lib/warehouse-inbound.js";
+import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -17,7 +18,7 @@ const movementSchema = z.object({
   note: z.string().optional().nullable(),
 });
 
-router.post("/movements", async (req, res) => {
+router.post("/movements", requirePermission("stock", "add"), async (req, res) => {
   const parsed = movementSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });

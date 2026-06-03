@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { applyBinQuantityChange } from "../lib/personnel-bin-stock.js";
+import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
 function binMovementNote(
@@ -104,7 +105,7 @@ function binItemJson(i: {
 }
 
 /** Site + user options for personnel forms (avoid `/form-meta` matching `/:id`). */
-router.get("/form-meta", async (req, res) => {
+router.get("/form-meta", requirePermission("personnel", "read"), async (req, res) => {
   const personnelId =
     typeof req.query.personnelId === "string" ? req.query.personnelId : undefined;
   const sites = await prisma.site.findMany({
@@ -128,7 +129,7 @@ router.get("/form-meta", async (req, res) => {
   res.json({ sites: siteOptions, users });
 });
 
-router.get("/", async (_req, res) => {
+router.get("/", requirePermission("personnel", "read"), async (_req, res) => {
   const list = await prisma.personnel.findMany({
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     include: {
@@ -139,7 +140,7 @@ router.get("/", async (_req, res) => {
   res.json(list.map(serializePersonnel));
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("personnel", "add"), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -180,7 +181,7 @@ router.post("/", async (req, res) => {
 });
 
 /** Bin items — must be registered before `GET /:id` */
-router.get("/:id/bin/items", async (req, res) => {
+router.get("/:id/bin/items", requirePermission("personnel", "read"), async (req, res) => {
   const personnel = await prisma.personnel.findUnique({ where: { id: req.params.id } });
   if (!personnel) {
     res.status(404).json({ error: "Personnel not found" });
@@ -194,7 +195,7 @@ router.get("/:id/bin/items", async (req, res) => {
   res.json(items.map(binItemJson));
 });
 
-router.post("/:id/bin/items", async (req, res) => {
+router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req, res) => {
   const parsed = binItemSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -273,7 +274,7 @@ router.post("/:id/bin/items", async (req, res) => {
   }
 });
 
-router.patch("/:id/bin/items/:itemId", async (req, res) => {
+router.patch("/:id/bin/items/:itemId", requirePermission("personnel", "edit"), async (req, res) => {
   const parsed = binPatchSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -349,7 +350,7 @@ router.patch("/:id/bin/items/:itemId", async (req, res) => {
   }
 });
 
-router.delete("/:id/bin/items/:itemId", async (req, res) => {
+router.delete("/:id/bin/items/:itemId", requirePermission("personnel", "delete"), async (req, res) => {
   const { id: personnelId, itemId } = req.params;
   const actorUserId = req.user!.sub;
 
@@ -403,7 +404,7 @@ router.delete("/:id/bin/items/:itemId", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requirePermission("personnel", "read"), async (req, res) => {
   const row = await prisma.personnel.findUnique({
     where: { id: req.params.id },
     include: {
@@ -418,7 +419,7 @@ router.get("/:id", async (req, res) => {
   res.json(serializePersonnel(row));
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requirePermission("personnel", "edit"), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -469,7 +470,7 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("personnel", "delete"), async (req, res) => {
   try {
     await prisma.personnel.delete({ where: { id: req.params.id } });
     res.status(204).send();

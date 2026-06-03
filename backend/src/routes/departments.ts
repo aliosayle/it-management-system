@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
+import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -38,7 +39,7 @@ function serializeDepartment(d: {
   };
 }
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("departments", "read"), async (req, res) => {
   const siteId = typeof req.query.siteId === "string" ? req.query.siteId : undefined;
   const list = await prisma.department.findMany({
     where: siteId ? { siteId } : undefined,
@@ -50,7 +51,7 @@ router.get("/", async (req, res) => {
   res.json(list.map(serializeDepartment));
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("departments", "add"), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -78,7 +79,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requirePermission("departments", "read"), async (req, res) => {
   const row = await prisma.department.findUnique({
     where: { id: req.params.id },
     include: {
@@ -92,7 +93,7 @@ router.get("/:id", async (req, res) => {
   res.json(serializeDepartment(row));
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requirePermission("departments", "edit"), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -129,7 +130,7 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("departments", "delete"), async (req, res) => {
   try {
     await prisma.department.delete({ where: { id: req.params.id } });
     res.status(204).send();

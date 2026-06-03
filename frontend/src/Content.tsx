@@ -3,8 +3,11 @@ import appInfo from './app-info';
 import { routes } from './app-routes';
 import { SideNavOuterToolbar as SideNavBarLayout } from './layouts';
 import { Footer } from './components';
+import { usePermissions } from './hooks/use-permissions';
 
 export default function Content() {
+  const { firstAllowedPath } = usePermissions();
+
   return (
     <SideNavBarLayout title={appInfo.title}>
       <Routes>
@@ -17,7 +20,7 @@ export default function Content() {
         ))}
         <Route
           path='*'
-          element={<Navigate to='/products' replace />}
+          element={<Navigate to={firstAllowedPath} replace />}
         />
       </Routes>
       <Footer>

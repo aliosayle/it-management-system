@@ -1,5 +1,6 @@
 import type { TreeViewTypes } from 'devextreme-react/tree-view';
 import type { ButtonTypes } from 'devextreme-react/button';
+import type { PermissionsByResource } from './lib/permissions';
 
 export interface HeaderProps {
     menuToggleEnabled: boolean;
@@ -26,6 +27,7 @@ export interface User {
     displayName: string;
     role: UserRole;
     avatarUrl: string;
+    permissions?: PermissionsByResource;
 }
 
 export type AuthContextType = {

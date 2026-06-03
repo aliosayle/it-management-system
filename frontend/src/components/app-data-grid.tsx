@@ -4,6 +4,9 @@ import {
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
+import type { ToolbarPreparingEvent } from "devextreme/ui/data_grid";
+import { usePagePermissions } from "../hooks/use-permissions";
+import type { PermissionResource } from "../lib/permissions";
 import DataGrid, {
   type DataGridRef,
   Toolbar,
@@ -56,6 +59,8 @@ export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
    * or when totals are not meaningful (e.g. some remote reshape setups).
    */
   autoNumericFooter?: boolean;
+  /** When set, toolbar add row stays visible but is disabled when the user lacks add permission. */
+  permissionResource?: PermissionResource;
 };
 
 function footerSignature(
@@ -157,8 +162,10 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       toolbarItems,
       autoNumericFooter,
       exportFileName,
+      permissionResource,
       onContentReady,
       onExporting: onExportingProp,
+      onToolbarPreparing: onToolbarPreparingProp,
       summary,
       columnFixing,
       groupPanel,
@@ -172,6 +179,25 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
     },
     ref,
   ) {
+    const pagePerms = usePagePermissions(permissionResource);
+    const canAdd = pagePerms.canAdd;
+    const showAdd = showAddRowButton !== false;
+
+    const handleToolbarPreparing = useCallback(
+      (e: ToolbarPreparingEvent) => {
+        onToolbarPreparingProp?.(e);
+        if (!permissionResource || canAdd) {
+          return;
+        }
+        for (const item of e.toolbarOptions.items ?? []) {
+          if (item && typeof item === "object" && "name" in item && item.name === "addRowButton") {
+            item.options = { ...(item.options as object), disabled: true };
+          }
+        }
+      },
+      [onToolbarPreparingProp, permissionResource, canAdd],
+    );
+
     const searchPanel = {
       visible: true,
       highlightCaseSensitive: false,
@@ -294,10 +320,11 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         summary={summary}
         onContentReady={handleContentReady}
         onExporting={handleExporting}
+        onToolbarPreparing={handleToolbarPreparing}
         {...rest}
       >
         <Toolbar>
-          {showAddRowButton !== false ? <ToolbarItem name="addRowButton" location="before" /> : null}
+          {showAdd ? <ToolbarItem name="addRowButton" location="before" /> : null}
           {toolbarItems}
           <ToolbarItem name="searchPanel" locateInMenu="auto" />
           <ToolbarItem name="exportButton" locateInMenu="auto" />

@@ -23,6 +23,8 @@ import Form, {
 } from "devextreme-react/form";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { PageReadGuard } from "../components/require-page-access";
+import { usePagePermissions } from "../hooks/use-permissions";
 import { StockMovementProductSummary } from "../components/stock-movement-product-summary";
 import { apiFetch, apiFetchBlob } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
@@ -108,6 +110,7 @@ function productPickFromRow(row: Record<string, unknown>): ProductPick {
 }
 
 export default function ProductsPage() {
+  const { canAdd, canEdit, canDelete, canRead } = usePagePermissions("products");
   const gridRef = useRef<DataGridRef>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [personnelOptions, setPersonnelOptions] = useState<
@@ -702,6 +705,7 @@ export default function ProductsPage() {
   ]);
 
   return (
+    <PageReadGuard resource="products">
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
         <h2>Products</h2>
@@ -709,6 +713,7 @@ export default function ProductsPage() {
 
       <div className="page-grid-body">
         <AppDataGrid
+          permissionResource="products"
           ref={gridRef}
           keyExpr="id"
           persistenceKey="itm-grid-products-v3"
@@ -726,7 +731,10 @@ export default function ProductsPage() {
                   type: "default",
                   stylingMode: "contained",
                   icon: "user",
-                  disabled: personnelOptions.length === 0 || productOptions.length === 0,
+                  disabled:
+                    !canAdd ||
+                    personnelOptions.length === 0 ||
+                    productOptions.length === 0,
                   onClick: () => {
                     void openAssignPopup();
                   },
@@ -739,6 +747,7 @@ export default function ProductsPage() {
                   text: "Add category",
                   stylingMode: "outlined",
                   icon: "plus",
+                  disabled: !canAdd,
                   onClick: () => openAddCategoryPopup(),
                 }}
               />
@@ -754,7 +763,13 @@ export default function ProductsPage() {
           }}
           onEditorPreparing={onCategoryEditorPreparing}
         >
-        <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
+        <Editing
+          allowAdding={canAdd}
+          allowUpdating={canEdit}
+          allowDeleting={canDelete}
+          mode="popup"
+          useIcons
+        >
           <Popup title="Product" showTitle width={480} height="auto" />
         </Editing>
         <FilterRow visible />
@@ -823,10 +838,11 @@ export default function ProductsPage() {
           formItem={{ visible: false }}
         />
         <Column type="buttons" width={132}>
-          <ColumnButton name="edit" />
+          <ColumnButton name="edit" disabled={!canEdit} />
           <ColumnButton
             hint="New stock movement"
             icon="import"
+            disabled={!canAdd}
             onClick={(e) => {
               if (e.row?.isNewRow) {
                 return;
@@ -840,6 +856,7 @@ export default function ProductsPage() {
           <ColumnButton
             hint="Product statement (movements & purchases)"
             icon="orderedlist"
+            disabled={!canRead}
             onClick={(e) => {
               if (e.row?.isNewRow) {
                 return;
@@ -850,7 +867,7 @@ export default function ProductsPage() {
               }
             }}
           />
-          <ColumnButton name="delete" />
+          <ColumnButton name="delete" disabled={!canDelete} />
         </Column>
         <Paging defaultPageSize={20} />
         <Pager showPageSizeSelector showInfo />
@@ -988,5 +1005,6 @@ export default function ProductsPage() {
         contentRender={renderStatementPopupContent}
       />
     </div>
+    </PageReadGuard>
   );
 }

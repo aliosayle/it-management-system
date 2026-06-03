@@ -16,6 +16,8 @@ import TextArea from "devextreme-react/text-area";
 import NumberBox from "devextreme-react/number-box";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { PageReadGuard } from "../components/require-page-access";
+import { usePagePermissions } from "../hooks/use-permissions";
 import {
   QuickAddCompanyPopup,
   QuickAddPersonnelPopup,
@@ -313,6 +315,7 @@ function buildPurchaseEditConfirmMessage(
 }
 
 export default function PurchasesPage() {
+  const { canAdd, canEdit, canDelete } = usePagePermissions("purchases");
   const [popupOpen, setPopupOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [personnel, setPersonnel] = useState<PersonnelRow[]>([]);
@@ -867,6 +870,7 @@ export default function PurchasesPage() {
   const bonChosenLabel = bonFile?.name ?? null;
 
   return (
+    <PageReadGuard resource="purchases">
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
         <h2>Purchases</h2>
@@ -874,6 +878,7 @@ export default function PurchasesPage() {
 
       <div className="page-grid-body">
         <AppDataGrid
+          permissionResource="purchases"
           key={gridRefresh}
           persistenceKey="itm-grid-purchases-v8"
           dataSource={dataSource}
@@ -890,6 +895,7 @@ export default function PurchasesPage() {
                 type: "default",
                 stylingMode: "contained",
                 icon: "add",
+                disabled: !canAdd,
                 onClick: () => openCreate(),
               }}
             />
@@ -924,6 +930,7 @@ export default function PurchasesPage() {
               hint="Edit"
               icon="edit"
               text="Edit"
+              disabled={!canEdit}
               onClick={(e) => {
                 const row = e.row?.data as PurchaseListRow | undefined;
                 if (row) void openEdit(row);
@@ -944,6 +951,7 @@ export default function PurchasesPage() {
               hint="Delete"
               icon="trash"
               text="Del"
+              disabled={!canDelete}
               onClick={(e) => {
                 const row = e.row?.data as PurchaseListRow | undefined;
                 if (row) void deletePurchase(row);
@@ -1396,5 +1404,6 @@ export default function PurchasesPage() {
         }}
       />
     </div>
+    </PageReadGuard>
   );
 }

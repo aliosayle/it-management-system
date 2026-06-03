@@ -1,15 +1,19 @@
 import type { User } from "../types";
+import type { PermissionsByResource } from "../lib/permissions";
 import { getErrorMessage } from "../utils/error-message";
 import { apiFetch, setToken } from "./client";
 
+type AuthUserPayload = {
+  id: string;
+  email: string;
+  displayName: string;
+  role: User["role"];
+  permissions: PermissionsByResource;
+};
+
 type LoginResponse = {
   token: string;
-  user: {
-    id: string;
-    email: string;
-    displayName: string;
-    role: User["role"];
-  };
+  user: AuthUserPayload;
 };
 
 export async function signIn(email: string, password: string) {
@@ -26,6 +30,7 @@ export async function signIn(email: string, password: string) {
       email: data.user.email,
       displayName: data.user.displayName,
       role: data.user.role,
+      permissions: data.user.permissions,
       avatarUrl: "https://js.devexpress.com/Demos/WidgetsGallery/JSDemos/images/employees/06.png",
     };
 
@@ -47,18 +52,14 @@ export async function getUser() {
     if (!t) {
       return { isOk: false as const };
     }
-    const data = (await apiFetch("/api/auth/me")) as {
-      id: string;
-      email: string;
-      displayName: string;
-      role: User["role"];
-    };
+    const data = (await apiFetch("/api/auth/me")) as AuthUserPayload;
 
     const user: User = {
       id: data.id,
       email: data.email,
       displayName: data.displayName,
       role: data.role,
+      permissions: data.permissions,
       avatarUrl: "https://js.devexpress.com/Demos/WidgetsGallery/JSDemos/images/employees/06.png",
     };
 

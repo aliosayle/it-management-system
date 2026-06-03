@@ -1,5 +1,7 @@
 import { Navigate } from "react-router-dom";
+import { usePermissions } from "../hooks/use-permissions";
 
 export default function HomePage() {
-  return <Navigate to="/products" replace />;
+  const { firstAllowedPath } = usePermissions();
+  return <Navigate to={firstAllowedPath} replace />;
 }

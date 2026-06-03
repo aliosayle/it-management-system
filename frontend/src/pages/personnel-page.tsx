@@ -14,6 +14,8 @@ import {
 import PopupDx from "devextreme-react/popup";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { PageReadGuard } from "../components/require-page-access";
+import { usePagePermissions } from "../hooks/use-permissions";
 import { PersonnelBinPopup, type ProductOption } from "../components/personnel-bin-popup";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
@@ -53,6 +55,7 @@ function formatWhen(value: unknown): string {
 type ProductRow = { id: string; sku: string; name: string };
 
 export default function PersonnelPage() {
+  const { canAdd, canEdit, canDelete, canRead } = usePagePermissions("personnel");
   const [meta, setMeta] = useState<FormMeta | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [viewRow, setViewRow] = useState<Record<string, unknown> | null>(null);
@@ -198,12 +201,14 @@ export default function PersonnelPage() {
   }, [viewRow]);
 
   return (
+    <PageReadGuard resource="personnel">
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
         <h2>Personnel</h2>
       </div>
       <div className="page-grid-body">
         <AppDataGrid
+          permissionResource="personnel"
           persistenceKey="itm-grid-personnel-v3"
           dataSource={dataSource}
           repaintChangesOnly
@@ -226,7 +231,13 @@ export default function PersonnelPage() {
             notify(getDataGridErrorMessage(e), "error", 5000);
           }}
         >
-          <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
+          <Editing
+            allowAdding={canAdd}
+            allowUpdating={canEdit}
+            allowDeleting={canDelete}
+            mode="popup"
+            useIcons
+          >
             <Popup title="Personnel" showTitle width={640} height="auto" />
           </Editing>
           <FilterRow visible />
@@ -308,11 +319,12 @@ export default function PersonnelPage() {
             }}
           />
           <Column type="buttons" width={168}>
-            <ColumnButton name="edit" />
+            <ColumnButton name="edit" disabled={!canEdit} />
             <ColumnButton
               hint="View"
               icon="eyeopen"
               text="View"
+              disabled={!canRead}
               onClick={(e) => {
                 if (e.row?.isNewRow) {
                   return;
@@ -326,6 +338,7 @@ export default function PersonnelPage() {
             <ColumnButton
               hint="Personal bin — products assigned to this person"
               icon="box"
+              disabled={!canRead}
               onClick={(e) => {
                 if (e.row?.isNewRow) {
                   return;
@@ -336,7 +349,7 @@ export default function PersonnelPage() {
                 }
               }}
             />
-            <ColumnButton name="delete" />
+            <ColumnButton name="delete" disabled={!canDelete} />
           </Column>
           <Paging defaultPageSize={20} />
           <Pager showPageSizeSelector showInfo />
@@ -365,5 +378,6 @@ export default function PersonnelPage() {
         onClose={closePersonalBin}
       />
     </div>
+    </PageReadGuard>
   );
 }

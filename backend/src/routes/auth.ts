@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
+import { loadPermissionsForUser } from "../lib/permissions.js";
 import { requireAuth, signToken } from "../middleware/auth.js";
 
 const router = Router();
@@ -24,6 +25,7 @@ router.post("/login", async (req, res) => {
     return;
   }
   const token = signToken({ sub: user.id, role: user.role });
+  const permissions = await loadPermissionsForUser(user.id, user.role);
   res.json({
     token,
     user: {
@@ -31,6 +33,7 @@ router.post("/login", async (req, res) => {
       email: user.email,
       displayName: user.displayName,
       role: user.role,
+      permissions,
     },
   });
 });
@@ -50,7 +53,8 @@ router.get("/me", requireAuth, async (req, res) => {
     res.status(404).json({ error: "User not found" });
     return;
   }
-  res.json(user);
+  const permissions = await loadPermissionsForUser(user.id, user.role);
+  res.json({ ...user, permissions });
 });
 
 export default router;

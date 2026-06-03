@@ -12,6 +12,7 @@ import {
 import PopupDx from "devextreme-react/popup";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "./app-data-grid";
+import { usePagePermissions } from "../hooks/use-permissions";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage } from "../utils/error-message";
 
@@ -32,6 +33,7 @@ export function PersonnelBinPopup({
   products,
   onClose,
 }: Props) {
+  const { canAdd, canEdit, canDelete } = usePagePermissions("personnel");
   const dataSource = useMemo(() => {
     if (!personnelId) {
       return new CustomStore({ key: "id", load: () => Promise.resolve([]) });
@@ -79,6 +81,7 @@ export function PersonnelBinPopup({
       showCloseButton
     >
       <AppDataGrid
+        permissionResource="personnel"
         key={personnelId ?? "none"}
         className="personnel-bin-grid"
         dataSource={dataSource}
@@ -94,7 +97,13 @@ export function PersonnelBinPopup({
           notify(getDataGridErrorMessage(e), "error", 5000);
         }}
       >
-        <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
+        <Editing
+          allowAdding={canAdd}
+          allowUpdating={canEdit}
+          allowDeleting={canDelete}
+          mode="popup"
+          useIcons
+        >
           <Popup title="Bin line" showTitle width={720} height="auto" />
         </Editing>
         <FilterRow visible />

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Prisma, PurchaseDestination, PurchaseStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { rememberProductCategory } from "../lib/product-category.js";
+import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 import { movementJson } from "../lib/movement-format.js";
 
@@ -72,7 +73,7 @@ function lineReceivedWhereLabel(r: {
   }
 }
 
-router.get("/", async (_req, res) => {
+router.get("/", requirePermission("products", "read"), async (_req, res) => {
   const list = await prisma.product.findMany({ orderBy: { sku: "asc" } });
   const ids = list.map((p) => p.id);
   if (ids.length === 0) {
@@ -124,7 +125,7 @@ router.get("/", async (_req, res) => {
 });
 
 /** Product stock statement (movement history). */
-router.get("/:id/movements", async (req, res) => {
+router.get("/:id/movements", requirePermission("products", "read"), async (req, res) => {
   const skip = Math.max(0, Number(req.query.skip) || 0);
   const take = Math.min(5000, Math.max(1, Number(req.query.take) || 50));
 
@@ -163,7 +164,7 @@ router.get("/:id/movements", async (req, res) => {
 });
 
 /** Completed purchase lines for this product (unit price history / supplier trace). */
-router.get("/:id/purchase-history", async (req, res) => {
+router.get("/:id/purchase-history", requirePermission("products", "read"), async (req, res) => {
   const product = await prisma.product.findUnique({
     where: { id: req.params.id },
   });
@@ -223,7 +224,7 @@ router.get("/:id/purchase-history", async (req, res) => {
   });
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("products", "add"), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -255,7 +256,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requirePermission("products", "read"), async (req, res) => {
   const p = await prisma.product.findUnique({ where: { id: req.params.id } });
   if (!p) {
     res.status(404).json({ error: "Not found" });
@@ -264,7 +265,7 @@ router.get("/:id", async (req, res) => {
   res.json(productJson(p));
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requirePermission("products", "edit"), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -300,7 +301,7 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("products", "delete"), async (req, res) => {
   try {
     await prisma.product.delete({ where: { id: req.params.id } });
     res.status(204).send();

@@ -9,6 +9,8 @@ import {
   type DataGridRef,
 } from "devextreme-react/data-grid";
 import { AppDataGrid } from "../components/app-data-grid";
+import { PageReadGuard } from "../components/require-page-access";
+import { usePagePermissions } from "../hooks/use-permissions";
 import SelectBox from "devextreme-react/select-box";
 import Button from "devextreme-react/button";
 import Popup from "devextreme-react/popup";
@@ -44,6 +46,7 @@ type MovementRow = {
 };
 
 export default function StockPage() {
+  const { canAdd } = usePagePermissions("stock");
   const gridRef = useRef<DataGridRef>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState<string | null>(null);
@@ -173,7 +176,7 @@ export default function StockPage() {
               setMovementForm({ type: null, quantity: 1, note: "" });
               setPopupOpen(true);
             }}
-            disabled={!productId}
+            disabled={!productId || !canAdd}
           />
         </div>
       )}
@@ -181,6 +184,7 @@ export default function StockPage() {
   );
 
   return (
+    <PageReadGuard resource="stock">
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
         <h2>Stock</h2>
@@ -202,6 +206,7 @@ export default function StockPage() {
         ) : null}
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <AppDataGrid
+            permissionResource="stock"
             ref={gridRef}
             keyExpr="id"
             className="stock-movements-grid"
@@ -311,5 +316,6 @@ export default function StockPage() {
         </div>
       </Popup>
     </div>
+    </PageReadGuard>
   );
 }

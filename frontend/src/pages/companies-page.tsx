@@ -11,10 +11,13 @@ import {
 } from "devextreme-react/data-grid";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { PageReadGuard } from "../components/require-page-access";
+import { usePagePermissions } from "../hooks/use-permissions";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage } from "../utils/error-message";
 
 export default function CompaniesPage() {
+  const { canAdd, canEdit, canDelete } = usePagePermissions("companies");
   const dataSource = useMemo(
     () =>
       new CustomStore({
@@ -40,12 +43,14 @@ export default function CompaniesPage() {
   );
 
   return (
+    <PageReadGuard resource="companies">
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
         <h2>Companies</h2>
       </div>
       <div className="page-grid-body">
       <AppDataGrid
+        permissionResource="companies"
         persistenceKey="itm-grid-companies"
         dataSource={dataSource}
         repaintChangesOnly
@@ -54,7 +59,13 @@ export default function CompaniesPage() {
           notify(getDataGridErrorMessage(e), "error", 5000);
         }}
       >
-        <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
+        <Editing
+          allowAdding={canAdd}
+          allowUpdating={canEdit}
+          allowDeleting={canDelete}
+          mode="popup"
+          useIcons
+        >
           <Popup title="Company" showTitle width={420} height="auto" />
         </Editing>
         <FilterRow visible />
@@ -84,5 +95,6 @@ export default function CompaniesPage() {
       </AppDataGrid>
       </div>
     </div>
+    </PageReadGuard>
   );
 }

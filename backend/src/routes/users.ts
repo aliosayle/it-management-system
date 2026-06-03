@@ -4,12 +4,19 @@ import { z } from "zod";
 import { Role } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import {
+  buildPermissionRowsFromInput,
+  loadPermissionsForUser,
+  permissionsToApiList,
+  requirePermission,
+  saveUserPermissions,
+} from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 
 const router = Router();
 
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth);
 
 const createSchema = z.object({
   email: z.string().email(),
@@ -25,7 +32,20 @@ const updateSchema = z.object({
   role: z.nativeEnum(Role).optional(),
 });
 
-router.get("/", async (_req, res) => {
+const permissionsBodySchema = z.object({
+  permissions: z.array(
+    z.object({
+      resource: z.string(),
+      canView: z.boolean(),
+      canRead: z.boolean(),
+      canAdd: z.boolean(),
+      canEdit: z.boolean(),
+      canDelete: z.boolean(),
+    }),
+  ),
+});
+
+router.get("/", requirePermission("users", "read"), async (_req, res) => {
   const users = await prisma.user.findMany({
     orderBy: { email: "asc" },
     select: {
@@ -40,13 +60,22 @@ router.get("/", async (_req, res) => {
   res.json(users);
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("users", "add"), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
+  const caller = await prisma.user.findUnique({
+    where: { id: req.user!.sub },
+    select: { role: true },
+  });
   const { email, password, displayName, role } = parsed.data;
+  const effectiveRole = role ?? Role.USER;
+  if (effectiveRole === Role.ADMIN && caller?.role !== Role.ADMIN) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
   const passwordHash = await bcrypt.hash(password, 12);
   try {
     const user = await prisma.user.create({
@@ -54,7 +83,7 @@ router.post("/", async (req, res) => {
         email,
         passwordHash,
         displayName,
-        role: role ?? Role.USER,
+        role: effectiveRole,
       },
       select: {
         id: true,
@@ -76,7 +105,44 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id/permissions", requireAdmin, async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, role: true },
+  });
+  if (!user) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const permissions = await loadPermissionsForUser(user.id, user.role);
+  res.json({ permissions: permissionsToApiList(permissions) });
+});
+
+router.put("/:id/permissions", requireAdmin, async (req, res) => {
+  const parsed = permissionsBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const target = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, role: true },
+  });
+  if (!target) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (target.role === Role.ADMIN) {
+    res.status(400).json({ error: "Cannot modify permissions for an administrator" });
+    return;
+  }
+  const rows = buildPermissionRowsFromInput(parsed.data.permissions);
+  await saveUserPermissions(target.id, rows);
+  const permissions = await loadPermissionsForUser(target.id, target.role);
+  res.json({ permissions: permissionsToApiList(permissions) });
+});
+
+router.get("/:id", requirePermission("users", "read"), async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.params.id },
     select: {
@@ -95,13 +161,33 @@ router.get("/:id", async (req, res) => {
   res.json(user);
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requirePermission("users", "edit"), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
+  const caller = await prisma.user.findUnique({
+    where: { id: req.user!.sub },
+    select: { role: true },
+  });
+  const target = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: { role: true },
+  });
+  if (!target) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (target.role === Role.ADMIN && caller?.role !== Role.ADMIN) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
   const { email, password, displayName, role } = parsed.data;
+  if (role !== undefined && role !== Role.USER && caller?.role !== Role.ADMIN) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
   const data: Prisma.UserUpdateInput = {};
   if (email !== undefined) data.email = email;
   if (displayName !== undefined) data.displayName = displayName;
@@ -136,9 +222,25 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("users", "delete"), async (req, res) => {
   if (req.params.id === req.user!.sub) {
     res.status(400).json({ error: "Cannot delete your own account" });
+    return;
+  }
+  const caller = await prisma.user.findUnique({
+    where: { id: req.user!.sub },
+    select: { role: true },
+  });
+  const target = await prisma.user.findUnique({
+    where: { id: req.params.id },
+    select: { role: true },
+  });
+  if (!target) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (target.role === Role.ADMIN && caller?.role !== Role.ADMIN) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
   try {

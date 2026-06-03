@@ -15,6 +15,7 @@ import {
   addToSiteBinWithoutStock,
   subtractFromSiteBinWithoutStock,
 } from "../lib/site-bin-direct.js";
+import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
 function resolveBonAbsolute(storedPath: string): string {
@@ -361,7 +362,7 @@ function purchaseListItem(p: {
   };
 }
 
-router.get("/", async (_req, res) => {
+router.get("/", requirePermission("purchases", "read"), async (_req, res) => {
   const rows = await prisma.purchase.findMany({
     orderBy: { createdAt: "desc" },
     take: 200,
@@ -388,7 +389,7 @@ router.get("/", async (_req, res) => {
   res.json(rows.map(purchaseListItem));
 });
 
-router.get("/:id/bon", async (req, res) => {
+router.get("/:id/bon", requirePermission("purchases", "read"), async (req, res) => {
   const row = await prisma.purchase.findUnique({
     where: { id: req.params.id },
     select: { bonStoredPath: true, bonOriginalName: true },
@@ -409,7 +410,7 @@ router.get("/:id/bon", async (req, res) => {
   res.sendFile(abs);
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requirePermission("purchases", "read"), async (req, res) => {
   const row = await prisma.purchase.findUnique({
     where: { id: req.params.id },
     include: {
@@ -708,7 +709,7 @@ function parsePatchBody(req: { body: unknown }): Record<string, unknown> {
   return b;
 }
 
-router.post("/", (req, res, next) => {
+router.post("/", requirePermission("purchases", "add"), (req, res, next) => {
   upload.single("bon")(req, res, (err: unknown) => {
     if (err) {
       const msg = err instanceof Error ? err.message : "Upload failed";
@@ -898,7 +899,7 @@ router.post("/", (req, res, next) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("purchases", "delete"), async (req, res) => {
   const id = req.params.id;
   const userId = req.user!.sub;
   const existing = await prisma.purchase.findUnique({
@@ -945,7 +946,7 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-router.patch("/:id", (req, res, next) => {
+router.patch("/:id", requirePermission("purchases", "edit"), (req, res, next) => {
   const ct = req.get("content-type") || "";
   if (ct.includes("multipart/form-data")) {
     upload.single("bon")(req, res, (err: unknown) => {

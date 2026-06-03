@@ -13,6 +13,8 @@ import {
 import PopupDx from "devextreme-react/popup";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { PageReadGuard } from "../components/require-page-access";
+import { usePagePermissions } from "../hooks/use-permissions";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage } from "../utils/error-message";
 
@@ -42,6 +44,7 @@ type SupplierPurchaseRow = {
 };
 
 export default function SuppliersPage() {
+  const { canAdd, canEdit, canDelete, canRead } = usePagePermissions("suppliers");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySupplierId, setHistorySupplierId] = useState<string | null>(null);
   const [historySupplierName, setHistorySupplierName] = useState("");
@@ -131,12 +134,14 @@ export default function SuppliersPage() {
   }, []);
 
   return (
+    <PageReadGuard resource="suppliers">
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
         <h2>Suppliers</h2>
       </div>
       <div className="page-grid-body">
         <AppDataGrid
+          permissionResource="suppliers"
           persistenceKey="itm-grid-suppliers-v2"
           dataSource={dataSource}
           repaintChangesOnly
@@ -145,7 +150,13 @@ export default function SuppliersPage() {
             notify(getDataGridErrorMessage(e), "error", 5000);
           }}
         >
-          <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
+          <Editing
+            allowAdding={canAdd}
+            allowUpdating={canEdit}
+            allowDeleting={canDelete}
+            mode="popup"
+            useIcons
+          >
             <Popup title="Supplier" showTitle width={520} height="auto" />
           </Editing>
           <FilterRow visible />
@@ -227,17 +238,18 @@ export default function SuppliersPage() {
             formItem={{ visible: false }}
           />
           <Column type="buttons" width={100}>
-            <ColumnButton name="edit" />
+            <ColumnButton name="edit" disabled={!canEdit} />
             <ColumnButton
               hint="Purchase history"
               icon="orderedlist"
               text="History"
+              disabled={!canRead}
               onClick={(e) => {
                 const row = e.row?.data as Record<string, unknown> | undefined;
                 if (row) openHistory(row);
               }}
             />
-            <ColumnButton name="delete" />
+            <ColumnButton name="delete" disabled={!canDelete} />
           </Column>
           <Paging defaultPageSize={20} />
           <Pager showPageSizeSelector showInfo />
@@ -305,5 +317,6 @@ export default function SuppliersPage() {
         </div>
       </PopupDx>
     </div>
+    </PageReadGuard>
   );
 }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Prisma, PurchaseStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -43,7 +44,7 @@ function emptyAgg(): SupplierLineAgg {
   };
 }
 
-router.get("/", async (_req, res) => {
+router.get("/", requirePermission("suppliers", "read"), async (_req, res) => {
   const list = await prisma.supplier.findMany({ orderBy: { name: "asc" } });
   if (list.length === 0) {
     res.json([]);
@@ -107,7 +108,7 @@ router.get("/", async (_req, res) => {
   );
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("suppliers", "add"), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -133,7 +134,7 @@ router.post("/", async (req, res) => {
 });
 
 /** Purchase history for this supplier (all statuses, for traceability). Must be before `GET /:id`. */
-router.get("/:id/purchases", async (req, res) => {
+router.get("/:id/purchases", requirePermission("suppliers", "read"), async (req, res) => {
   const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id } });
   if (!supplier) {
     res.status(404).json({ error: "Not found" });
@@ -189,7 +190,7 @@ router.get("/:id/purchases", async (req, res) => {
   );
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requirePermission("suppliers", "read"), async (req, res) => {
   const row = await prisma.supplier.findUnique({ where: { id: req.params.id } });
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -198,7 +199,7 @@ router.get("/:id", async (req, res) => {
   res.json(row);
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requirePermission("suppliers", "edit"), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -234,7 +235,7 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("suppliers", "delete"), async (req, res) => {
   try {
     await prisma.supplier.delete({ where: { id: req.params.id } });
     res.status(204).send();

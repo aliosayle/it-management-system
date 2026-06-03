@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { listAllSavedCategoryLabels, rememberProductCategory } from "../lib/product-category.js";
+import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -11,13 +12,13 @@ const labelSchema = z.object({
 });
 
 /** Merged saved + in-use category strings (built-in IT list is client-side only). */
-router.get("/", async (_req, res) => {
+router.get("/", requirePermission("products", "read"), async (_req, res) => {
   const labels = await listAllSavedCategoryLabels();
   res.json({ labels });
 });
 
 /** Register a category before assigning it to a product (optional UX). */
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("products", "add"), async (req, res) => {
   const parsed = labelSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });

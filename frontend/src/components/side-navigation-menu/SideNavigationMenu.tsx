@@ -4,6 +4,7 @@ import type { ItemRenderedEvent } from "devextreme/ui/tree_view";
 import * as events from "devextreme-react/common/core/events";
 import { navigation, type NavItem } from "../../app-navigation";
 import { useNavigation } from "../../contexts/navigation-hooks";
+import { usePermissions } from "../../hooks/use-permissions";
 import "./SideNavigationMenu.scss";
 import type { SideNavigationMenuProps } from "../../types";
 
@@ -22,7 +23,14 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
 
   const theme = useContext(ThemeContext);
 
-  const items = useMemo(() => normalizePaths(navigation), []);
+  const { canViewResource } = usePermissions();
+  const items = useMemo(
+    () =>
+      normalizePaths(navigation).filter(
+        (item) => !item.resource || canViewResource(item.resource),
+      ),
+    [canViewResource],
+  );
 
   const {
     navigationData: { currentPath },

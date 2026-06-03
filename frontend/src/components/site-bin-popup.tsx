@@ -12,6 +12,7 @@ import {
 import PopupDx from "devextreme-react/popup";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "./app-data-grid";
+import { usePagePermissions } from "../hooks/use-permissions";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage } from "../utils/error-message";
 
@@ -26,6 +27,7 @@ type Props = {
 };
 
 export function SiteBinPopup({ visible, siteId, title, products, onClose }: Props) {
+  const { canAdd, canEdit, canDelete } = usePagePermissions("sites");
   const dataSource = useMemo(() => {
     if (!siteId) {
       return new CustomStore({ key: "id", load: () => Promise.resolve([]) });
@@ -71,6 +73,7 @@ export function SiteBinPopup({ visible, siteId, title, products, onClose }: Prop
       showCloseButton
     >
       <AppDataGrid
+        permissionResource="sites"
         key={siteId ?? "none"}
         className="site-bin-grid"
         dataSource={dataSource}
@@ -86,7 +89,13 @@ export function SiteBinPopup({ visible, siteId, title, products, onClose }: Prop
           notify(getDataGridErrorMessage(e), "error", 5000);
         }}
       >
-        <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
+        <Editing
+          allowAdding={canAdd}
+          allowUpdating={canEdit}
+          allowDeleting={canDelete}
+          mode="popup"
+          useIcons
+        >
           <Popup title="Bin line" showTitle width={720} height="auto" />
         </Editing>
         <FilterRow visible />

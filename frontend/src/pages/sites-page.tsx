@@ -12,6 +12,8 @@ import {
 } from "devextreme-react/data-grid";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { PageReadGuard } from "../components/require-page-access";
+import { usePagePermissions } from "../hooks/use-permissions";
 import { SiteBinPopup, type ProductOption } from "../components/site-bin-popup";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
@@ -19,6 +21,7 @@ import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message
 type Company = { id: string; name: string };
 
 export default function SitesPage() {
+  const { canAdd, canEdit, canDelete, canRead } = usePagePermissions("sites");
   const [companies, setCompanies] = useState<Company[]>([]);
   const [binOpen, setBinOpen] = useState(false);
   const [binSiteId, setBinSiteId] = useState<string | null>(null);
@@ -99,12 +102,14 @@ export default function SitesPage() {
   );
 
   return (
+    <PageReadGuard resource="sites">
     <div className="content-block content-block--fill">
       <div className="page-toolbar">
         <h2>Sites</h2>
       </div>
       <div className="page-grid-body">
       <AppDataGrid
+        permissionResource="sites"
         persistenceKey="itm-grid-sites"
         dataSource={dataSource}
         repaintChangesOnly
@@ -113,7 +118,13 @@ export default function SitesPage() {
           notify(getDataGridErrorMessage(e), "error", 5000);
         }}
       >
-        <Editing allowAdding allowUpdating allowDeleting mode="popup" useIcons>
+        <Editing
+          allowAdding={canAdd}
+          allowUpdating={canEdit}
+          allowDeleting={canDelete}
+          mode="popup"
+          useIcons
+        >
           <Popup title="Site" showTitle width={480} height="auto" />
         </Editing>
         <FilterRow visible />
@@ -159,10 +170,11 @@ export default function SitesPage() {
           formItem={{ visible: false }}
         />
         <Column type="buttons" width={140}>
-          <ColumnButton name="edit" />
+          <ColumnButton name="edit" disabled={!canEdit} />
           <ColumnButton
             hint="Site bin — equipment and consumables at this location"
             icon="box"
+            disabled={!canRead}
             onClick={(e) => {
               if (e.row?.isNewRow) {
                 return;
@@ -173,7 +185,7 @@ export default function SitesPage() {
               }
             }}
           />
-          <ColumnButton name="delete" />
+          <ColumnButton name="delete" disabled={!canDelete} />
         </Column>
         <Paging defaultPageSize={20} />
         <Pager showPageSizeSelector showInfo />
@@ -188,5 +200,6 @@ export default function SitesPage() {
         onClose={closeSiteBin}
       />
     </div>
+    </PageReadGuard>
   );
 }
