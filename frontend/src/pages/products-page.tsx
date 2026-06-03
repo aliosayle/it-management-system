@@ -14,6 +14,7 @@ import {
 } from "devextreme-react/data-grid";
 import Button from "devextreme-react/button";
 import PopupDx from "devextreme-react/popup";
+import TabPanel, { Item as TabPanelItem } from "devextreme-react/tab-panel";
 import Form, {
   Item,
   Label,
@@ -532,141 +533,163 @@ export default function ProductsPage() {
 
     const movements = statementMovements ?? [];
     const purchases = statementPurchases ?? [];
+    const productId = statementProduct.id;
+    const tabHeight = "100%";
 
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-          width: "100%",
-          minHeight: 520,
-          padding: "4px 0",
-          boxSizing: "border-box",
-        }}
-      >
-        <div style={{ flexShrink: 0 }}>
-          <StockMovementProductSummary
-            sku={statementProduct.sku}
-            name={statementProduct.name}
-            quantityOnHand={statementProduct.quantityOnHand}
-            description={statementProduct.description}
-          />
-        </div>
+      <div className="product-statement-popup">
+        <StockMovementProductSummary
+          sku={statementProduct.sku}
+          name={statementProduct.name}
+          quantityOnHand={statementProduct.quantityOnHand}
+          description={statementProduct.description}
+        />
+        <p className="product-statement-popup__hint">
+          Warehouse movements and completed purchase lines for this product. Use the tabs
+          below; filter and export apply to the active table.
+        </p>
         {statementError ? (
-          <div style={{ color: "var(--dx-color-danger, #d13438)", fontSize: 13 }}>
-            {statementError}
-          </div>
+          <div className="product-statement-popup__error">{statementError}</div>
         ) : null}
         {statementLoading ? (
-          <div style={{ fontSize: 13, opacity: 0.85 }}>Loading statement…</div>
-        ) : null}
-        <div style={{ fontWeight: 600, fontSize: 13 }}>Warehouse stock movements</div>
-        <div style={{ height: 260, minHeight: 200 }}>
-          <AppDataGrid
-            key={`m-${statementProduct.id}`}
-            keyExpr="id"
-            className="stock-movements-grid"
-            dataSource={movements}
-            remoteOperations={false}
+          <div className="product-statement-popup__loading">Loading statement…</div>
+        ) : (
+          <TabPanel
+            className="product-statement-popup__tabs"
             height="100%"
-            showAddRowButton={false}
-            onDataErrorOccurred={(e) => {
-              notify(getDataGridErrorMessage(e), "error", 5000);
-            }}
+            deferRendering={false}
+            animationEnabled={false}
           >
-            <FilterRow visible />
-            <Column dataField="createdAt" dataType="datetime" caption="When" />
-            <Column
-              dataField="type"
-              caption="Type"
-              width={200}
-              calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
-            />
-            <Column dataField="quantity" dataType="number" />
-            <Column dataField="balanceAfter" caption="Balance after" dataType="number" />
-            <Column dataField="note" />
-            <Column
-              caption="User"
-              calculateCellValue={(row: MovementRow) =>
-                row.user?.displayName || row.user?.email || ""
-              }
-            />
-            <Paging defaultPageSize={20} />
-            <Pager showPageSizeSelector showInfo />
-          </AppDataGrid>
-        </div>
-        <div style={{ fontWeight: 600, fontSize: 13 }}>
-          Completed purchases (unit price history)
-        </div>
-        <div style={{ height: 260, minHeight: 200 }}>
-          <AppDataGrid
-            key={`p-${statementProduct.id}`}
-            keyExpr="id"
-            dataSource={purchases}
-            remoteOperations={false}
-            height="100%"
-            showAddRowButton={false}
-            onDataErrorOccurred={(e) => {
-              notify(getDataGridErrorMessage(e), "error", 5000);
-            }}
-          >
-            <FilterRow visible />
-            <Column dataField="createdAt" dataType="datetime" caption="When" width={138} />
-            <Column dataField="supplierName" caption="Supplier" width={160} />
-            <Column dataField="quantity" dataType="number" width={80} />
-            <Column dataField="unitPrice" caption="Unit price" dataType="number" format="#,##0.00" />
-            <Column dataField="lineTotal" caption="Line total" dataType="number" format="#,##0.00" />
-            <Column
-              dataField="receivedWhere"
-              caption="Received at"
-              width={220}
-              calculateCellValue={(row: PurchaseHistoryGridRow) =>
-                row.receivedWhere ||
-                row.lineDestination ||
-                row.destination ||
-                "—"
-              }
-            />
-            <Column
-              dataField="bonOriginalName"
-              caption="Bon (click to download)"
-              width={200}
-              cellRender={(cell) => {
-                const row = cell.data as PurchaseHistoryGridRow | undefined;
-                const name = row?.bonOriginalName?.trim();
-                if (!name || !row?.purchaseId) {
-                  return <span style={{ opacity: 0.55 }}>—</span>;
-                }
-                return (
-                  <button
-                    type="button"
-                    className="dx-link"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      textAlign: "left",
-                      font: "inherit",
-                      color: "var(--dx-color-link, #0f548c)",
-                      textDecoration: "underline",
+            <TabPanelItem title={`Stock movements (${movements.length})`}>
+              <div className="product-statement-popup__grid-pane">
+                <AppDataGrid
+                  key={`m-${productId}`}
+                  keyExpr="id"
+                  className="stock-movements-grid"
+                  persistenceKey={`itm-product-statement-m-${productId}`}
+                  exportFileName={`${statementProduct.sku}-movements`}
+                  dataSource={movements}
+                  remoteOperations={false}
+                  height={tabHeight}
+                  showAddRowButton={false}
+                  onDataErrorOccurred={(e) => {
+                    notify(getDataGridErrorMessage(e), "error", 5000);
+                  }}
+                >
+                  <FilterRow visible />
+                  <Column dataField="createdAt" dataType="datetime" caption="When" width={150} />
+                  <Column
+                    dataField="type"
+                    caption="Type"
+                    width={200}
+                    calculateCellValue={(row: MovementRow) => movementTypeLabel(row.type)}
+                  />
+                  <Column dataField="quantity" dataType="number" width={100} />
+                  <Column
+                    dataField="balanceAfter"
+                    caption="Balance after"
+                    dataType="number"
+                    width={120}
+                  />
+                  <Column dataField="note" />
+                  <Column
+                    caption="User"
+                    width={140}
+                    calculateCellValue={(row: MovementRow) =>
+                      row.user?.displayName || row.user?.email || ""
+                    }
+                  />
+                  <Paging defaultPageSize={25} />
+                  <Pager showPageSizeSelector showInfo />
+                </AppDataGrid>
+              </div>
+            </TabPanelItem>
+            <TabPanelItem title={`Purchases (${purchases.length})`}>
+              <div className="product-statement-popup__grid-pane">
+                <AppDataGrid
+                  key={`p-${productId}`}
+                  keyExpr="id"
+                  persistenceKey={`itm-product-statement-p-${productId}`}
+                  exportFileName={`${statementProduct.sku}-purchases`}
+                  dataSource={purchases}
+                  remoteOperations={false}
+                  height={tabHeight}
+                  showAddRowButton={false}
+                  onDataErrorOccurred={(e) => {
+                    notify(getDataGridErrorMessage(e), "error", 5000);
+                  }}
+                >
+                  <FilterRow visible />
+                  <Column dataField="createdAt" dataType="datetime" caption="When" width={150} />
+                  <Column dataField="supplierName" caption="Supplier" width={180} />
+                  <Column dataField="quantity" dataType="number" width={90} />
+                  <Column
+                    dataField="unitPrice"
+                    caption="Unit price"
+                    dataType="number"
+                    format="#,##0.00"
+                    width={110}
+                  />
+                  <Column
+                    dataField="lineTotal"
+                    caption="Line total"
+                    dataType="number"
+                    format="#,##0.00"
+                    width={110}
+                  />
+                  <Column
+                    dataField="receivedWhere"
+                    caption="Received at"
+                    width={240}
+                    calculateCellValue={(row: PurchaseHistoryGridRow) =>
+                      row.receivedWhere ||
+                      row.lineDestination ||
+                      row.destination ||
+                      "—"
+                    }
+                  />
+                  <Column
+                    dataField="bonOriginalName"
+                    caption="Bon (click to download)"
+                    width={220}
+                    cellRender={(cell) => {
+                      const row = cell.data as PurchaseHistoryGridRow | undefined;
+                      const name = row?.bonOriginalName?.trim();
+                      if (!name || !row?.purchaseId) {
+                        return <span style={{ opacity: 0.55 }}>—</span>;
+                      }
+                      return (
+                        <button
+                          type="button"
+                          className="dx-link"
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            cursor: "pointer",
+                            textAlign: "left",
+                            font: "inherit",
+                            color: "var(--dx-color-link, #0f548c)",
+                            textDecoration: "underline",
+                          }}
+                          onClick={(ev) => {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            void downloadStatementBon(row);
+                          }}
+                        >
+                          {name}
+                        </button>
+                      );
                     }}
-                    onClick={(ev) => {
-                      ev.preventDefault();
-                      ev.stopPropagation();
-                      void downloadStatementBon(row);
-                    }}
-                  >
-                    {name}
-                  </button>
-                );
-              }}
-            />
-            <Paging defaultPageSize={20} />
-            <Pager showPageSizeSelector showInfo />
-          </AppDataGrid>
-        </div>
+                  />
+                  <Paging defaultPageSize={25} />
+                  <Pager showPageSizeSelector showInfo />
+                </AppDataGrid>
+              </div>
+            </TabPanelItem>
+          </TabPanel>
+        )}
       </div>
     );
   }, [
@@ -958,8 +981,9 @@ export default function ProductsPage() {
             ? `Product statement — ${statementProduct.sku}`
             : "Product statement"
         }
-        width={1080}
-        height={680}
+        width="96vw"
+        height="90vh"
+        wrapperAttr={{ class: "product-statement-popup-shell" }}
         showCloseButton
         contentRender={renderStatementPopupContent}
       />

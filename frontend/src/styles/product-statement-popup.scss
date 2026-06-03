@@ -1,0 +1,75 @@
+/* Product statement modal: tall layout + tabbed grids */
+
+.product-statement-popup-shell.dx-popup-wrapper .dx-overlay-content {
+  max-width: min(96vw, 1680px);
+}
+
+.product-statement-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  height: calc(90vh - 7.5rem);
+  min-height: 28rem;
+  max-height: calc(100vh - 2.5rem);
+  box-sizing: border-box;
+
+  &__hint {
+    flex-shrink: 0;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--base-text-color-alpha-7, rgba(0, 0, 0, 0.55));
+  }
+
+  &__loading,
+  &__error {
+    flex-shrink: 0;
+    font-size: 13px;
+  }
+
+  &__error {
+    color: var(--dx-color-danger, #d13438);
+  }
+
+  &__tabs.dx-tabpanel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    > .dx-tabpanel-tabs {
+      flex-shrink: 0;
+    }
+
+    > .dx-tabpanel-container {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .dx-multiview-wrapper {
+      height: 100%;
+    }
+
+    .dx-multiview-item,
+    .dx-multiview-item-content {
+      height: 100%;
+    }
+
+    .dx-multiview-item-content {
+      box-sizing: border-box;
+      padding: 10px 2px 4px;
+    }
+  }
+
+  &__grid-pane {
+    height: 100%;
+    min-height: 18rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stock-movement-product-summary {
+    margin-bottom: 0;
+  }
+}

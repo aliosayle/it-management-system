@@ -11,8 +11,14 @@ import DataGrid, {
   HeaderFilter,
   StateStoring,
 } from "devextreme-react/data-grid";
+import notify from "devextreme/ui/notify";
 import type dxDataGrid from "devextreme/ui/data_grid";
-import type { ContentReadyEvent } from "devextreme/ui/data_grid";
+import type { ContentReadyEvent, ExportingEvent } from "devextreme/ui/data_grid";
+import { getErrorMessage } from "../utils/error-message";
+import {
+  exportDataGridToExcel,
+  gridExportFileName,
+} from "../utils/devextreme-grid-excel-export";
 
 const AUTO_NUMERIC_SUMMARY_PREFIX = "__appAutoSum:";
 
@@ -42,6 +48,8 @@ export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   showAddRowButton?: boolean;
   /** Extra toolbar items (e.g. custom buttons) rendered after Add, before search */
   toolbarItems?: ReactNode;
+  /** Base name for Excel download (without extension). Defaults from `persistenceKey`. */
+  exportFileName?: string;
   /**
    * When true (default), a footer total (sum) is added for each visible column with `dataType="number"`.
    * Custom `summary.totalItems` entries are preserved. Set false when you supply your own summary
@@ -148,7 +156,9 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       showAddRowButton,
       toolbarItems,
       autoNumericFooter,
+      exportFileName,
       onContentReady,
+      onExporting: onExportingProp,
       summary,
       columnFixing,
       groupPanel,
@@ -173,8 +183,26 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
     const exportOpts = {
       enabled: true,
       allowExportSelectedData: true,
+      formats: ["xlsx"],
       ...(typeof exportProp === "object" && exportProp !== null ? exportProp : {}),
     };
+
+    const excelExportBaseName =
+      exportFileName ?? gridExportFileName(persistenceKey);
+
+    const handleExporting = useCallback(
+      (e: ExportingEvent) => {
+        const fmt = String(e.format ?? "xlsx").toLowerCase();
+        if (fmt === "xlsx") {
+          void exportDataGridToExcel(e, excelExportBaseName).catch((err: unknown) => {
+            notify(getErrorMessage(err, "Excel export failed"), "error", 5000);
+          });
+          return;
+        }
+        onExportingProp?.(e);
+      },
+      [onExportingProp, excelExportBaseName],
+    );
 
     const columnChooserOpts = {
       enabled: true,
@@ -265,6 +293,7 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
         loadPanel={loadPanelOpts}
         summary={summary}
         onContentReady={handleContentReady}
+        onExporting={handleExporting}
         {...rest}
       >
         <Toolbar>
