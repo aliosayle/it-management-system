@@ -142,10 +142,31 @@
     border: 1px solid rgba(25, 118, 210, 0.25);
   }
 
-  &--manager {
-    background: rgba(46, 125, 50, 0.08);
-    border: 1px solid rgba(46, 125, 50, 0.2);
+  &--waiting {
+    background: rgba(255, 152, 0, 0.1);
+    border: 1px solid rgba(255, 152, 0, 0.35);
   }
+
+  &--review {
+    background: rgba(46, 125, 50, 0.1);
+    border: 1px solid rgba(46, 125, 50, 0.35);
+  }
+}
+
+.task-detail__assigned-you {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dx-color-primary, #1976d2);
+}
+
+.task-detail__due-line {
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.task-detail__actions--submit {
+  margin-top: 4px;
 }
 
 .task-detail__title {

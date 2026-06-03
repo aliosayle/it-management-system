@@ -36,12 +36,12 @@ import {
   notifyTaskComment,
   notifyTaskReassigned,
   notifyTaskStatus,
+  notifyTaskSubmittedForReview,
 } from "../lib/task-notifications.js";
 
 const ASSIGNEE_STATUS_VALUES = new Set<TaskStatus>([
   TaskStatus.IN_PROGRESS,
   TaskStatus.ON_HOLD,
-  TaskStatus.DONE,
 ]);
 
 const taskUploadDir = taskUploadRoot();
@@ -427,7 +427,17 @@ router.patch("/:id", requireAuth, async (req, res) => {
     !(await canManageTask(actor, existing)) &&
     !ASSIGNEE_STATUS_VALUES.has(data.status)
   ) {
-    res.status(403).json({ error: "Assignees can only set in progress, on hold, or done" });
+    res.status(403).json({
+      error: "Assignees can only set in progress or on hold; use submit for review when finished",
+    });
+    return;
+  }
+  if (
+    data.status !== undefined &&
+    !(await canManageTask(actor, existing)) &&
+    data.status === TaskStatus.PENDING_REVIEW
+  ) {
+    res.status(403).json({ error: "Use submit for review to send the task to your reviewer" });
     return;
   }
 
@@ -523,6 +533,71 @@ router.patch("/:id", requireAuth, async (req, res) => {
         statusLabel: statusLabel(data.status),
       });
     }
+  }
+
+  res.json(serializeTaskListRow(updated));
+});
+
+router.post("/:id/submit-for-review", requireAuth, async (req, res) => {
+  const id = String(req.params.id);
+  const actor = await getTaskActor(req.user!.sub);
+  if (!actor) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const existing = await prisma.task.findUnique({ where: { id } });
+  if (!existing) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (existing.assigneeId !== actor.id) {
+    res.status(403).json({ error: "Only the assignee can submit for review" });
+    return;
+  }
+  if (
+    existing.status === TaskStatus.DONE ||
+    existing.status === TaskStatus.CANCELLED
+  ) {
+    res.status(400).json({ error: "Task is already closed" });
+    return;
+  }
+  if (existing.status === TaskStatus.PENDING_REVIEW) {
+    res.status(400).json({ error: "Task is already submitted for review" });
+    return;
+  }
+
+  const actorUser = await prisma.user.findUnique({
+    where: { id: actor.id },
+    select: { displayName: true },
+  });
+  const actorName = actorUser?.displayName ?? "Someone";
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.task.update({
+      where: { id },
+      data: { status: TaskStatus.PENDING_REVIEW },
+      include: taskInclude,
+    });
+    await tx.taskActivity.create({
+      data: {
+        taskId: id,
+        type: TaskActivityType.STATUS_CHANGE,
+        body: "Submitted for review",
+        fromStatus: existing.status,
+        toStatus: TaskStatus.PENDING_REVIEW,
+        createdById: actor.id,
+      },
+    });
+    return row;
+  });
+
+  if (existing.createdById !== actor.id) {
+    await notifyTaskSubmittedForReview({
+      recipientId: existing.createdById,
+      taskId: id,
+      title: existing.title,
+      assigneeName: actorName,
+    });
   }
 
   res.json(serializeTaskListRow(updated));

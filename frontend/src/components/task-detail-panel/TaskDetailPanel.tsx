@@ -8,7 +8,6 @@ import notify from "devextreme/ui/notify";
 import { apiFetch, apiFetchBlob } from "../../api/client";
 import { getErrorMessage } from "../../utils/error-message";
 import {
-  TASK_ASSIGNEE_STATUS_OPTIONS,
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
   taskPriorityLabel,
@@ -347,7 +346,6 @@ export function TaskDetailPanel({
   onSaved,
 }: Props) {
   const [localDetail, setLocalDetail] = useState(detail);
-  const [workStatus, setWorkStatus] = useState(detail.status);
   const [saving, setSaving] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
@@ -355,32 +353,27 @@ export function TaskDetailPanel({
 
   useEffect(() => {
     setLocalDetail(detail);
-    const nextStatus =
-      detail.viewerRole === "assignee" && detail.status === "OPEN"
-        ? "IN_PROGRESS"
-        : detail.status;
-    setWorkStatus(nextStatus);
   }, [detail]);
 
-  const patchStatus = useCallback(
-    async (status: string) => {
-      setSaving(true);
-      try {
-        await apiFetch(`/api/tasks/${detail.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ status }),
-        });
-        notify("Status updated", "success", 2000);
-        onSaved();
-        await onReload();
-      } catch (e: unknown) {
-        notify(getErrorMessage(e, "Failed to update status"), "error", 5000);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [detail.id, onReload, onSaved],
-  );
+  const submitForReview = useCallback(async () => {
+    if (localDetail.attachments.length === 0) {
+      notify("Upload at least one photo before submitting for review.", "warning", 4500);
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiFetch(`/api/tasks/${detail.id}/submit-for-review`, {
+        method: "POST",
+      });
+      notify("Submitted for review", "success", 2500);
+      onSaved();
+      await onReload();
+    } catch (e: unknown) {
+      notify(getErrorMessage(e, "Failed to submit for review"), "error", 5000);
+    } finally {
+      setSaving(false);
+    }
+  }, [detail.id, localDetail.attachments.length, onReload, onSaved]);
 
   const saveManager = useCallback(async () => {
     setSaving(true);
@@ -514,16 +507,16 @@ export function TaskDetailPanel({
   };
 
   if (localDetail.viewerRole === "assignee") {
-    const isDone =
+    const isClosed =
       localDetail.status === "DONE" || localDetail.status === "CANCELLED";
+    const awaitingReview = localDetail.status === "PENDING_REVIEW";
+    const canSubmit = !isClosed && !awaitingReview;
+
     return (
       <div className="task-detail task-detail--assignee">
-        <div className="task-detail__banner task-detail__banner--assignee">
-          You are assigned to this task. Update progress, add photos, and mark
-          complete — you cannot change title, assignee, or schedule.
-        </div>
         <div className="task-detail__summary">
           <h2 className="task-detail__title">{localDetail.title}</h2>
+          <p className="task-detail__assigned-you">Assigned to you</p>
           <div className="task-detail__meta-row">
             <span className="task-detail__badge">
               {taskStatusLabel(localDetail.status)}
@@ -531,55 +524,53 @@ export function TaskDetailPanel({
             <span className="task-detail__badge">
               {taskPriorityLabel(localDetail.priority)}
             </span>
-            {localDetail.dueAt ? (
-              <span>Due {new Date(localDetail.dueAt).toLocaleString()}</span>
-            ) : null}
           </div>
-          <p className="task-detail__muted">From {localDetail.createdByName}</p>
+          {localDetail.dueAt ? (
+            <p className="task-detail__due-line">
+              Complete by{" "}
+              <strong>{new Date(localDetail.dueAt).toLocaleString()}</strong>
+            </p>
+          ) : (
+            <p className="task-detail__due-line">No due date set</p>
+          )}
+          <p className="task-detail__muted">
+            Assigned by {localDetail.createdByName}
+          </p>
           {localDetail.description ? (
             <p className="task-detail__description">{localDetail.description}</p>
           ) : null}
         </div>
-        {!isDone ? (
-          <div className="task-detail__work">
-            <h3>Your work</h3>
-            <div className="task-detail__row">
-              <label>Status</label>
-              <SelectBox
-                dataSource={[...TASK_ASSIGNEE_STATUS_OPTIONS]}
-                displayExpr="text"
-                valueExpr="value"
-                value={workStatus}
-                onValueChanged={(e) => setWorkStatus(String(e.value))}
-              />
-            </div>
-            <div className="task-detail__actions">
-              <Button
-                text="Update status"
-                type="default"
-                stylingMode="contained"
-                disabled={saving}
-                onClick={() => void patchStatus(workStatus)}
-              />
-              <Button
-                text="Mark complete"
-                stylingMode="contained"
-                disabled={saving}
-                onClick={() => void patchStatus("DONE")}
-              />
-            </div>
+
+        {awaitingReview ? (
+          <div className="task-detail__banner task-detail__banner--waiting">
+            Waiting for {localDetail.createdByName} to review your submission and
+            complete this task.
           </div>
-        ) : (
-          <p className="task-detail__muted">
-            This task is {taskStatusLabel(localDetail.status).toLowerCase()}.
-          </p>
-        )}
-        <TaskPhotoGallery {...photoProps} canUpload canDeleteAny={false} />
-        <TaskFollowUpsSection
-          {...followUpProps}
-          isManager={false}
-          isAssignee
+        ) : canSubmit ? (
+          <div className="task-detail__banner task-detail__banner--assignee">
+            Upload photos of your work below, then submit for review when you are
+            finished.
+          </div>
+        ) : null}
+
+        <TaskPhotoGallery
+          {...photoProps}
+          canUpload={canSubmit}
+          canDeleteAny={false}
         />
+
+        {canSubmit ? (
+          <div className="task-detail__actions task-detail__actions--submit">
+            <Button
+              text="Submit for review"
+              type="default"
+              stylingMode="contained"
+              disabled={saving}
+              onClick={() => void submitForReview()}
+            />
+          </div>
+        ) : null}
+
         <TaskActivitySection {...activityProps} />
       </div>
     );
@@ -588,9 +579,12 @@ export function TaskDetailPanel({
   if (localDetail.viewerRole === "manager") {
     return (
       <div className="task-detail task-detail--manager">
-        <div className="task-detail__banner task-detail__banner--manager">
-          Review and manage this task. The assignee sees a limited work view.
-        </div>
+        {localDetail.status === "PENDING_REVIEW" ? (
+          <div className="task-detail__banner task-detail__banner--review">
+            {localDetail.assigneeName} submitted this task for review. Check the
+            photos and activity, then mark it complete.
+          </div>
+        ) : null}
         <div className="task-detail__fields">
           <div className="task-detail__row">
             <label>Title</label>

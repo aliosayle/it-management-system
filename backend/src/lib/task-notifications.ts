@@ -82,6 +82,22 @@ export async function notifyTaskStatus(params: {
   });
 }
 
+export async function notifyTaskSubmittedForReview(params: {
+  recipientId: string;
+  taskId: string;
+  title: string;
+  assigneeName: string;
+}) {
+  if (!params.recipientId) return;
+  await notifyUser({
+    userId: params.recipientId,
+    type: UserNotificationType.TASK_SUBMITTED_FOR_REVIEW,
+    taskId: params.taskId,
+    title: "Task submitted for review",
+    body: `${params.assigneeName} submitted "${params.title}" for your review. Please review and complete the task.`,
+  });
+}
+
 export async function notifyFollowUpScheduled(params: {
   assigneeId: string;
   taskId: string;

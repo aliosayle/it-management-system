@@ -1,14 +1,8 @@
-/** Status values assignees may set (not open/cancelled). */
-export const TASK_ASSIGNEE_STATUS_OPTIONS = [
-  { value: "IN_PROGRESS", text: "In progress" },
-  { value: "ON_HOLD", text: "On hold" },
-  { value: "DONE", text: "Done" },
-] as const;
-
 export const TASK_STATUS_OPTIONS = [
   { value: "OPEN", text: "Open" },
   { value: "IN_PROGRESS", text: "In progress" },
   { value: "ON_HOLD", text: "On hold" },
+  { value: "PENDING_REVIEW", text: "Pending review" },
   { value: "DONE", text: "Done" },
   { value: "CANCELLED", text: "Cancelled" },
 ] as const;

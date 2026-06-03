@@ -112,8 +112,8 @@ export async function resolveTaskViewerRole(
   actor: TaskActor,
   task: { createdById: string; assigneeId: string },
 ): Promise<TaskViewerRole> {
-  if (await canManageTask(actor, task)) return "manager";
   if (task.assigneeId === actor.id) return "assignee";
+  if (await canManageTask(actor, task)) return "manager";
   return "observer";
 }
 

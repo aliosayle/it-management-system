@@ -48,6 +48,7 @@ enum TaskStatus {
   OPEN
   IN_PROGRESS
   ON_HOLD
+  PENDING_REVIEW
   DONE
   CANCELLED
 }
@@ -73,6 +74,7 @@ enum UserNotificationType {
   TASK_FOLLOW_UP_DUE
   TASK_COMMENT
   TASK_STATUS
+  TASK_SUBMITTED_FOR_REVIEW
 }
 
 model User {
