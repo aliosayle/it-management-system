@@ -179,13 +179,14 @@ export default function UsersPage() {
               allowEditing={false}
               formItem={{ visible: false }}
             />
-            <Column type="buttons" width={isAdmin ? 118 : 88}>
+            <Column type="buttons" width={isAdmin ? 150 : 88}>
               <ColumnButton name="edit" disabled={!canEdit} />
               <ColumnButton name="delete" disabled={!canDelete} />
               {isAdmin ? (
                 <ColumnButton
                   hint="Page permissions"
-                  icon="preferences"
+                  icon="key"
+                  text="Permissions"
                   onClick={(e) => {
                     const row = e.row?.data as Record<string, unknown> | undefined;
                     if (!row?.id || row.role === "ADMIN") {

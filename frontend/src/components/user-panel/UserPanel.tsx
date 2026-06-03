@@ -1,6 +1,8 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from "react-router-dom";
-import DropDownButton from 'devextreme-react/drop-down-button';
+import DropDownButton, {
+  type DropDownButtonRef,
+} from 'devextreme-react/drop-down-button';
 import List from 'devextreme-react/list';
 import { useAuth } from '../../contexts/auth-hooks';
 import defaultUser from '../../utils/default-user';
@@ -10,6 +12,7 @@ import type { UserPanelProps } from '../../types';
 export default function UserPanel({ menuMode }: UserPanelProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const menuRef = useRef<DropDownButtonRef>(null);
 
   const navigateToProducts = useCallback(() => {
     navigate("/products");
@@ -40,8 +43,23 @@ export default function UserPanel({ menuMode }: UserPanelProps) {
   const displayName = user?.displayName ?? "User";
   const email = user?.email ?? "";
 
+  const openMenu = useCallback(() => {
+    menuRef.current?.instance()?.open();
+  }, []);
+
+  const onTriggerKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openMenu();
+      }
+    },
+    [openMenu],
+  );
+
   const profileButton = (
     <DropDownButton
+      ref={menuRef}
       stylingMode="text"
       icon={avatarUrl}
       showArrowIcon={false}
@@ -54,8 +72,16 @@ export default function UserPanel({ menuMode }: UserPanelProps) {
   return (
     <div className="user-panel">
       {menuMode === 'context' && (
-        <div className="user-panel__header">
-          <div className="user-panel__identity" aria-label="Signed-in user">
+        <div
+          className="user-panel__trigger"
+          role="button"
+          tabIndex={0}
+          aria-haspopup="menu"
+          aria-label="User menu"
+          onClick={openMenu}
+          onKeyDown={onTriggerKeyDown}
+        >
+          <div className="user-panel__identity">
             <span className="user-panel__name">{displayName}</span>
             {email ? <span className="user-panel__email">{email}</span> : null}
           </div>
