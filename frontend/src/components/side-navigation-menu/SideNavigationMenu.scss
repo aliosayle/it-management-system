@@ -1,6 +1,6 @@
 @use "../../utils/patches";
 
-/* Layout shell only — TreeView uses default DevExtreme theme styles. */
+/* Layout shell only — TreeView uses DevExtreme Fluent theme styles. */
 .dx-swatch-additional.side-navigation-menu,
 .dx-swatch-additional-dark.side-navigation-menu {
   display: flex;
@@ -11,6 +11,7 @@
   .menu-container {
     flex: 1;
     min-height: 0;
+    overflow-x: hidden;
   }
 
   /*
@@ -26,26 +27,59 @@
     display: none;
   }
 
-  /* Narrow drawer (compactMode): icon rail — hide labels, keep DevExtreme icons. */
+  /*
+   * Collapsed drawer (shrink + minSize): icon rail — DevExtreme application template behavior.
+   * Hide labels via item-content; keep icons centered in the narrow panel.
+   */
   &.side-navigation-menu--compact {
     #navigation-header .dx-toolbar-item.header-title {
       display: none;
     }
 
+    #navigation-header .dx-toolbar-items-container {
+      justify-content: center;
+    }
+
+    .dx-treeview-node {
+      padding-inline-start: 0 !important;
+    }
+
     .dx-treeview-item {
       justify-content: center;
       gap: 0;
-      padding-inline: 6px;
+      padding: 10px 0;
+      margin: 1px 0;
+      overflow: hidden;
     }
 
     .dx-treeview-item-content {
       flex: 0 0 auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      min-width: 0;
+      max-width: 100%;
+      font-size: 0;
+      line-height: 0;
+      color: transparent;
+
+      .dx-icon {
+        font-size: 20px;
+        line-height: 20px;
+        width: 20px;
+        height: 20px;
+        margin: 0 !important;
+        flex-shrink: 0;
+      }
     }
 
+    /* Older / alternate TreeView item markup */
     .dx-treeview-item .dx-item-content .dx-item-url {
       justify-content: center;
       font-size: 0;
       line-height: 0;
+      color: transparent;
 
       .dx-icon {
         font-size: 20px;

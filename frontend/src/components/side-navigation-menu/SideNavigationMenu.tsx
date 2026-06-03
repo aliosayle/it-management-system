@@ -19,7 +19,8 @@ function normalizePaths(items: NavItem[]): NavItem[] {
 }
 
 export default function SideNavigationMenu(props: React.PropsWithChildren<SideNavigationMenuProps>) {
-  const { children, selectedItemChanged, openMenu, compactMode, onMenuReady } = props;
+  const { children, selectedItemChanged, openMenu, compactMode, expandOnClick, onMenuReady } =
+    props;
 
   const theme = useContext(ThemeContext);
 
@@ -38,20 +39,20 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
 
   const treeViewRef = useRef<TreeViewRef>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const getWrapperRef = useCallback(
-    (element: HTMLDivElement) => {
-      const prevElement = wrapperRef.current;
-      if (prevElement) {
-        events.off(prevElement, "dxclick");
-      }
 
-      wrapperRef.current = element;
-      events.on(element, "dxclick", (e: React.PointerEvent) => {
-        openMenu(e);
-      });
-    },
-    [openMenu],
-  );
+  useEffect(() => {
+    const element = wrapperRef.current;
+    if (!element || !expandOnClick) {
+      return;
+    }
+    const handler = (e: React.PointerEvent) => {
+      openMenu(e);
+    };
+    events.on(element, "dxclick", handler);
+    return () => {
+      events.off(element, "dxclick", handler);
+    };
+  }, [expandOnClick, openMenu]);
 
   useEffect(() => {
     const treeView = treeViewRef.current?.instance();
@@ -79,7 +80,7 @@ export default function SideNavigationMenu(props: React.PropsWithChildren<SideNa
   return (
     <div
       className={`dx-swatch-additional${theme?.isDark() ? "-dark" : ""} side-navigation-menu${compactMode ? " side-navigation-menu--compact" : ""}`}
-      ref={getWrapperRef}
+      ref={wrapperRef}
     >
       {children}
       <div className="menu-container">

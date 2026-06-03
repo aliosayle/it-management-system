@@ -825,6 +825,31 @@ export default function PurchasesPage() {
     statusWhenLoaded,
   ]);
 
+  const markPurchaseComplete = useCallback(
+    async (row: PurchaseListRow) => {
+      if (row.status !== "PENDING") {
+        return;
+      }
+      const ok = window.confirm(
+        "Mark this purchase as complete? Warehouse stock and bin quantities will be updated.",
+      );
+      if (!ok) {
+        return;
+      }
+      try {
+        await apiFetch(`/api/purchases/${row.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "COMPLETE" }),
+        });
+        notify("Purchase marked complete", "success", 2000);
+        setGridRefresh((k) => k + 1);
+      } catch (e: unknown) {
+        notify(getErrorMessage(e, "Failed to mark purchase complete"), "error", 5000);
+      }
+    },
+    [],
+  );
+
   const deletePurchase = useCallback(
     async (row: PurchaseListRow) => {
       const ok = window.confirm(
@@ -880,7 +905,8 @@ export default function PurchasesPage() {
         <AppDataGrid
           permissionResource="purchases"
           key={gridRefresh}
-          persistenceKey="itm-grid-purchases-v9"
+          persistenceKey="itm-grid-purchases-v10"
+          className="purchases-grid"
           keyExpr="id"
           dataSource={dataSource}
           repaintChangesOnly
@@ -917,7 +943,13 @@ export default function PurchasesPage() {
             width={88}
             calculateCellValue={(row: PurchaseListRow) => statusLabel(row.status)}
           />
-          <Column dataField="supplierName" caption="Supplier" width={168} minWidth={120} />
+          <Column dataField="supplierName" caption="Supplier" width={148} minWidth={110} />
+          <Column
+            dataField="notes"
+            caption="Note"
+            minWidth={100}
+            width={140}
+          />
           <Column dataField="authorizedByName" caption="Authorized by" width={112} minWidth={88} />
           <Column dataField="buyerName" caption="Buyer" width={112} minWidth={88} />
           <Column dataField="lineCount" caption="#" width={40} dataType="number" />
@@ -931,7 +963,8 @@ export default function PurchasesPage() {
           <Column dataField="createdByName" caption="Recorded by" width={96} minWidth={72} />
           <Column
             type="buttons"
-            width={96}
+            cssClass="grid-actions-column"
+            width={124}
             allowResizing={false}
             allowFiltering={false}
             allowHeaderFiltering={false}
@@ -943,6 +976,16 @@ export default function PurchasesPage() {
               onClick={(e) => {
                 const row = e.row?.data as PurchaseListRow | undefined;
                 if (row) void openEdit(row);
+              }}
+            />
+            <ColumnButton
+              hint="Mark complete"
+              icon="check"
+              disabled={!canEdit}
+              visible={(e) => (e.row?.data as PurchaseListRow | undefined)?.status === "PENDING"}
+              onClick={(e) => {
+                const row = e.row?.data as PurchaseListRow | undefined;
+                if (row) void markPurchaseComplete(row);
               }}
             />
             <ColumnButton

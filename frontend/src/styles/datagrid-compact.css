@@ -93,6 +93,20 @@
   margin: 0 2px;
 }
 
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .grid-actions-column > td,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-command-edit.grid-actions-column,
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview td.grid-actions-column {
+  padding-right: 10px !important;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .grid-actions-column .dx-button {
+  margin-inline-end: 4px;
+}
+
+.dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .grid-actions-column .dx-button:last-child {
+  margin-inline-end: 0;
+}
+
 /* Buttons in data rows (custom ColumnButton, adaptive, etc.) */
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button,
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button.dx-button-has-icon {

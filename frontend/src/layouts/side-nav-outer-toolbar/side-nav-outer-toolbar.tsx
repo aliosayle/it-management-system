@@ -51,7 +51,7 @@ export default function SideNavOuterToolbar({ title, children }: React.PropsWith
     if (!isRoute) {
       return;
     }
-    if (menuStatus === MenuStatus.Closed || node?.selected) {
+    if ((menuStatus === MenuStatus.Closed && !isLarge) || node?.selected) {
       event?.preventDefault();
       return;
     }
@@ -80,7 +80,7 @@ export default function SideNavOuterToolbar({ title, children }: React.PropsWith
         closeOnOutsideClick={onOutsideClick}
         openedStateMode={isLarge ? 'shrink' : 'overlap'}
         revealMode={isXSmall ? 'slide' : 'expand'}
-        minSize={isXSmall ? 0 : 60}
+        minSize={isXSmall ? 0 : 48}
         maxSize={250}
         shading={isLarge ? false : true}
         opened={menuStatus === MenuStatus.Closed ? false : true}
@@ -108,7 +108,8 @@ export default function SideNavOuterToolbar({ title, children }: React.PropsWith
         </div>
         <Template name={'menu'}>
           <SideNavigationMenu
-            compactMode={menuStatus === MenuStatus.Closed}
+            compactMode={isLarge && menuStatus === MenuStatus.Closed}
+            expandOnClick={!isLarge && menuStatus === MenuStatus.Closed}
             selectedItemChanged={onNavigationChanged}
             openMenu={temporaryOpenMenu}
             onMenuReady={onMenuReady}

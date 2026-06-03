@@ -11,7 +11,10 @@ export interface HeaderProps {
 export interface SideNavigationMenuProps {
     selectedItemChanged: (e: TreeViewTypes.ItemClickEvent) => void;
     openMenu: (e: React.PointerEvent) => void;
+    /** Icon-only drawer panel (labels hidden). */
     compactMode: boolean;
+    /** Mobile overlap: tap rail to expand menu. Desktop icon rail navigates on item click. */
+    expandOnClick?: boolean;
     onMenuReady: (e: TreeViewTypes.ContentReadyEvent) => void;
 }
 
