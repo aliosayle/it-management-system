@@ -6,7 +6,6 @@ import TextBox from "devextreme-react/text-box";
 import DateBox from "devextreme-react/date-box";
 import notify from "devextreme/ui/notify";
 import { apiFetch, apiFetchBlob } from "../../api/client";
-import { useAuth } from "../../contexts/auth-hooks";
 import { getErrorMessage } from "../../utils/error-message";
 import {
   TASK_ASSIGNEE_STATUS_OPTIONS,
@@ -102,7 +101,6 @@ function TaskPhotoGallery({
   userId: string | undefined;
   onChanged: () => void;
 }) {
-  const { user: signedInUser } = useAuth();
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
 
@@ -197,33 +195,18 @@ function TaskPhotoGallery({
         ))}
       </ul>
       {canUpload ? (
-        <div className="task-photo-upload-row">
-          {signedInUser ? (
-            <div className="task-photo-signed-in-card" aria-label="Signed-in user">
-              <span className="task-photo-signed-in-card__label">Signed in as</span>
-              <span className="task-photo-signed-in-card__name">
-                {signedInUser.displayName}
-              </span>
-              <span className="task-photo-signed-in-card__email">
-                {signedInUser.email}
-              </span>
-            </div>
-          ) : null}
-          <div className="task-photo-upload">
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              disabled={uploading}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void uploadPhoto(file);
-                e.target.value = "";
-              }}
-            />
-            {uploading ? (
-              <span className="task-detail__muted">Uploading…</span>
-            ) : null}
-          </div>
+        <div className="task-photo-upload">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            disabled={uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void uploadPhoto(file);
+              e.target.value = "";
+            }}
+          />
+          {uploading ? <span className="task-detail__muted">Uploading…</span> : null}
         </div>
       ) : null}
     </div>

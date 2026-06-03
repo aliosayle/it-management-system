@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import DropDownButton from 'devextreme-react/drop-down-button';
 import List from 'devextreme-react/list';
 import { useAuth } from '../../contexts/auth-hooks';
+import defaultUser from '../../utils/default-user';
 import './UserPanel.scss';
 import type { UserPanelProps } from '../../types';
 
 export default function UserPanel({ menuMode }: UserPanelProps) {
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
   const navigateToProducts = useCallback(() => {
@@ -35,20 +36,40 @@ export default function UserPanel({ menuMode }: UserPanelProps) {
     width: '150px'
   };
 
+  const avatarUrl = user?.avatarUrl ?? defaultUser.avatarUrl;
+  const displayName = user?.displayName ?? "User";
+  const email = user?.email ?? "";
+
+  const profileButton = (
+    <DropDownButton
+      stylingMode="text"
+      icon={avatarUrl}
+      showArrowIcon={false}
+      elementAttr={dropDownButtonAttributes}
+      dropDownOptions={buttonDropDownOptions}
+      items={menuItems}
+    />
+  );
+
   return (
-    <div className='user-panel'>
+    <div className="user-panel">
       {menuMode === 'context' && (
-        <DropDownButton
-            stylingMode='text'
-            icon='https://js.devexpress.com/Demos/WidgetsGallery/JSDemos/images/employees/06.png'
-            showArrowIcon={false}
-            elementAttr={dropDownButtonAttributes}
-            dropDownOptions={buttonDropDownOptions}
-            items={menuItems}>
-        </DropDownButton>
+        <div className="user-panel__header">
+          <div className="user-panel__identity" aria-label="Signed-in user">
+            <span className="user-panel__name">{displayName}</span>
+            {email ? <span className="user-panel__email">{email}</span> : null}
+          </div>
+          {profileButton}
+        </div>
       )}
       {menuMode === 'list' && (
-        <List items={menuItems} />
+        <>
+          <div className="user-panel__identity user-panel__identity--menu">
+            <span className="user-panel__name">{displayName}</span>
+            {email ? <span className="user-panel__email">{email}</span> : null}
+          </div>
+          <List items={menuItems} />
+        </>
       )}
     </div>
   );
