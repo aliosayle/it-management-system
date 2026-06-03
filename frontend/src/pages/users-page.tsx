@@ -79,11 +79,37 @@ export default function UsersPage() {
               if (e.parentType !== "dataRow") {
                 return;
               }
-              if (e.dataField === "password" && e.row && e.row.isNewRow === false) {
-                e.cancel = true;
+              if (e.dataField === "password") {
+                e.editorOptions = {
+                  ...e.editorOptions,
+                  mode: "password",
+                  placeholder: e.row?.isNewRow
+                    ? "Required for new users (min 6 characters)"
+                    : "Leave blank to keep current password",
+                };
               }
               if (e.dataField === "role" && !isAdmin) {
                 e.cancel = true;
+              }
+            }}
+            onInitNewRow={(e) => {
+              const d = e.data as { password?: string };
+              d.password = "";
+            }}
+            onRowValidating={(e) => {
+              const password = (e.newData as { password?: string }).password;
+              const trimmed =
+                typeof password === "string" ? password.trim() : "";
+              const isNewRow = !(e.oldData as { id?: string } | undefined)?.id;
+              if (isNewRow) {
+                if (trimmed.length < 6) {
+                  e.errorText = "Password is required for new users (min 6 characters).";
+                  e.isValid = false;
+                  return;
+                }
+              } else if (trimmed.length > 0 && trimmed.length < 6) {
+                e.errorText = "New password must be at least 6 characters.";
+                e.isValid = false;
               }
             }}
             onDataErrorOccurred={(e) => {
@@ -114,9 +140,14 @@ export default function UsersPage() {
               dataField="password"
               caption="Password"
               visible={false}
+              allowFiltering={false}
+              allowSorting={false}
+              formItem={{
+                visible: true,
+                helpText: "On edit, leave empty to keep the existing password.",
+              }}
               editorOptions={{
                 mode: "password",
-                placeholder: "Required for new users (min 6 characters)",
               }}
             />
             <Column dataField="displayName" width={180}>
@@ -148,12 +179,13 @@ export default function UsersPage() {
               allowEditing={false}
               formItem={{ visible: false }}
             />
-            {isAdmin ? (
-              <Column type="buttons" width={56}>
+            <Column type="buttons" width={isAdmin ? 118 : 88}>
+              <ColumnButton name="edit" disabled={!canEdit} />
+              <ColumnButton name="delete" disabled={!canDelete} />
+              {isAdmin ? (
                 <ColumnButton
                   hint="Page permissions"
                   icon="preferences"
-                  disabled={false}
                   onClick={(e) => {
                     const row = e.row?.data as Record<string, unknown> | undefined;
                     if (!row?.id || row.role === "ADMIN") {
@@ -168,8 +200,8 @@ export default function UsersPage() {
                     );
                   }}
                 />
-              </Column>
-            ) : null}
+              ) : null}
+            </Column>
             <Paging defaultPageSize={20} />
             <Pager showPageSizeSelector showInfo />
           </AppDataGrid>

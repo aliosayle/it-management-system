@@ -4,6 +4,7 @@ import UserPanel from '../user-panel/UserPanel';
 import './Header.scss';
 import { Template } from 'devextreme-react/core/template';
 import { ThemeSwitcher } from '../theme-switcher/ThemeSwitcher';
+import NotificationBell from '../notification-bell/NotificationBell';
 import type { HeaderProps } from '../../types';
 
 export default function Header({ menuToggleEnabled, title, toggleMenu }: HeaderProps) {
@@ -24,9 +25,10 @@ export default function Header({ menuToggleEnabled, title, toggleMenu }: HeaderP
           text={title}
           visible={!!title}
         />
-        <Item
-          location={'after'}
-        >
+        <Item location={'after'}>
+          <NotificationBell />
+        </Item>
+        <Item location={'after'}>
           <ThemeSwitcher />
         </Item>
         <Item location='after' locateInMenu='auto' menuItemTemplate='userPanelTemplate'>

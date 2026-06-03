@@ -9,6 +9,7 @@ import {
   StockPage,
   PurchasesPage,
   SuppliersPage,
+  TasksPage,
 } from "./pages";
 import { withNavigationWatcher } from "./contexts/navigation-hooks";
 import { RequirePageAccess } from "./components/require-page-access";
@@ -29,6 +30,7 @@ const routeData: {
   { path: "/stock", element: StockPage, resource: "stock" },
   { path: "/purchases", element: PurchasesPage, resource: "purchases" },
   { path: "/suppliers", element: SuppliersPage, resource: "suppliers" },
+  { path: "/tasks", element: TasksPage, resource: "tasks" },
   { path: "/users", element: UsersPage, resource: "users" },
 ];
 

@@ -7,6 +7,7 @@ export const PERMISSION_RESOURCES = [
   { key: "suppliers", label: "Suppliers", path: "/suppliers" },
   { key: "stock", label: "Stock", path: "/stock" },
   { key: "purchases", label: "Purchases", path: "/purchases" },
+  { key: "tasks", label: "Tasks", path: "/tasks" },
   { key: "users", label: "Users", path: "/users" },
 ] as const;
 
