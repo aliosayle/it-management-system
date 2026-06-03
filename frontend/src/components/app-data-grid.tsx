@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useRef,
   useState,
   type ComponentPropsWithoutRef,
@@ -86,6 +87,34 @@ function filterValuesEqual(a: unknown, b: unknown): boolean {
   }
 }
 
+type DataGridWithCombinedFilter = dxDataGrid & {
+  getCombinedFilter?: (returnDataField?: boolean) => unknown;
+};
+
+/** DevExtreme: header filter / filter row / search can live outside filterValue until sync is on. */
+function getGridFilterExpression(grid: dxDataGrid): unknown {
+  const extended = grid as DataGridWithCombinedFilter;
+  if (typeof extended.getCombinedFilter === "function") {
+    try {
+      const combined = extended.getCombinedFilter();
+      if (combined !== undefined) {
+        return combined;
+      }
+    } catch {
+      /* grid not ready */
+    }
+  }
+  return grid.option("filterValue");
+}
+
+function isGridFilterOptionChange(fullName: string | undefined): boolean {
+  if (!fullName) return false;
+  if (fullName === "filterValue" || fullName === "searchPanel.text") return true;
+  if (/^columns\[\d+\]\.filterValues?$/.test(fullName)) return true;
+  if (fullName.startsWith("filterRow")) return true;
+  return false;
+}
+
 export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   /** When set, column order, widths (with resizing), filters, etc. persist in localStorage */
   persistenceKey?: string;
@@ -111,6 +140,12 @@ export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   permissionResource?: PermissionResource;
   /** DevExtreme Filter Builder panel below the grid (default true). */
   showFilterBuilder?: boolean;
+  /**
+   * Keeps header filter, filter row, search panel, and filter builder on one expression
+   * (`filterValue`). Defaults to true when the filter builder panel is shown.
+   * @see https://js.devexpress.com/Documentation/ApiReference/UI_Components/dxDataGrid/Configuration/#filterSyncEnabled
+   */
+  filterSyncEnabled?: boolean | "auto";
 };
 
 function footerSignature(
@@ -215,6 +250,7 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       exportFileName,
       permissionResource,
       showFilterBuilder = true,
+      filterSyncEnabled: filterSyncEnabledProp,
       onContentReady,
       onExporting: onExportingProp,
       onToolbarPreparing: onToolbarPreparingProp,
@@ -397,6 +433,13 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       [getFilterBuilder],
     );
 
+    const syncFilterBuilderFromGrid = useCallback(() => {
+      if (!showFilterBuilder || syncingFilterRef.current) return;
+      const grid = getGrid();
+      if (!grid) return;
+      applyFilterToBuilder(getGridFilterExpression(grid));
+    }, [showFilterBuilder, getGrid, applyFilterToBuilder]);
+
     const handleFilterBuilderValueChanged = useCallback(
       (e: { value?: unknown }) => {
         applyFilterToGrid(e.value);
@@ -407,13 +450,24 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
     const handleOptionChanged = useCallback(
       (e: OptionChangedEvent) => {
         onOptionChangedProp?.(e);
-        if (!showFilterBuilder || e.fullName !== "filterValue" || syncingFilterRef.current) {
-          return;
-        }
-        applyFilterToBuilder(e.value);
+        if (!showFilterBuilder || syncingFilterRef.current) return;
+        if (!isGridFilterOptionChange(e.fullName)) return;
+        queueMicrotask(() => {
+          syncFilterBuilderFromGrid();
+        });
       },
-      [onOptionChangedProp, showFilterBuilder, applyFilterToBuilder],
+      [onOptionChangedProp, showFilterBuilder, syncFilterBuilderFromGrid],
     );
+
+    const filterSyncEnabled =
+      filterSyncEnabledProp ?? (showFilterBuilder ? true : "auto");
+
+    useEffect(() => {
+      if (!showFilterBuilder || filterFields.length === 0) return;
+      queueMicrotask(() => {
+        syncFilterBuilderFromGrid();
+      });
+    }, [showFilterBuilder, filterFields, syncFilterBuilderFromGrid]);
 
     const handleContentReady = useCallback(
       (e: ContentReadyEvent) => {
@@ -427,11 +481,8 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
               if (sig && sig !== filterFieldsSigRef.current) {
                 filterFieldsSigRef.current = sig;
                 setFilterFields(fields);
-                const initial = grid.option("filterValue");
                 queueMicrotask(() => {
-                  if (initial !== undefined && initial !== null) {
-                    applyFilterToBuilder(initial);
-                  }
+                  syncFilterBuilderFromGrid();
                 });
               }
             }
@@ -443,7 +494,7 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
           }
         });
       },
-      [onContentReady, autoNumericFooter, showFilterBuilder, applyFilterToBuilder],
+      [onContentReady, autoNumericFooter, showFilterBuilder, syncFilterBuilderFromGrid],
     );
 
     const shellStyle =
@@ -478,6 +529,7 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
             export={exportOpts}
             columnChooser={columnChooserOpts}
             loadPanel={loadPanelOpts}
+            filterSyncEnabled={filterSyncEnabled}
             summary={summary}
             onContentReady={handleContentReady}
             onExporting={handleExporting}
@@ -512,6 +564,11 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
                 ref={filterBuilderRef}
                 fields={filterFields}
                 onValueChanged={handleFilterBuilderValueChanged}
+                onContentReady={() => {
+                  queueMicrotask(() => {
+                    syncFilterBuilderFromGrid();
+                  });
+                }}
               />
             ) : null}
           </div>
