@@ -26,6 +26,14 @@ import {
   type TaskListScope,
 } from "../lib/task-access.js";
 import {
+  attachmentUploaderNames,
+  deleteTaskAttachment,
+  getTaskAttachmentById,
+  insertTaskAttachment,
+  listTaskAttachments,
+  serializeTaskAttachmentApi,
+} from "../lib/task-attachments-db.js";
+import {
   resolveTaskAttachmentPath,
   taskPhotoUpload,
   taskUploadRoot,
@@ -132,25 +140,6 @@ function serializeActivity(a: {
     createdAt: a.createdAt,
     createdById: a.createdBy.id,
     createdByName: a.createdBy.displayName,
-  };
-}
-
-function serializeAttachment(a: {
-  id: string;
-  originalName: string;
-  mimeType: string;
-  fileSize: number;
-  createdAt: Date;
-  uploadedBy: { id: string; displayName: string };
-}) {
-  return {
-    id: a.id,
-    originalName: a.originalName,
-    mimeType: a.mimeType,
-    fileSize: a.fileSize,
-    createdAt: a.createdAt,
-    uploadedById: a.uploadedBy.id,
-    uploadedByName: a.uploadedBy.displayName,
   };
 }
 
@@ -353,12 +342,6 @@ router.get("/:id", requireAuth, async (req, res) => {
           createdBy: { select: { id: true, displayName: true } },
         },
       },
-      attachments: {
-        orderBy: { createdAt: "asc" },
-        include: {
-          uploadedBy: { select: { id: true, displayName: true } },
-        },
-      },
     },
   });
   if (!task) {
@@ -370,12 +353,20 @@ router.get("/:id", requireAuth, async (req, res) => {
     return;
   }
   const viewerRole = await resolveTaskViewerRole(actor, task);
+  const attachmentRows = await listTaskAttachments(id);
+  const uploaderIds = [...new Set(attachmentRows.map((a) => a.uploaded_by_id))];
+  const uploaderNames = await attachmentUploaderNames(uploaderIds);
   res.json({
     ...serializeTaskListRow(task),
     viewerRole,
     followUps: task.followUps.map(serializeFollowUp),
     activities: task.activities.map(serializeActivity),
-    attachments: task.attachments.map(serializeAttachment),
+    attachments: attachmentRows.map((row) =>
+      serializeTaskAttachmentApi(
+        row,
+        uploaderNames.get(row.uploaded_by_id) ?? "Unknown",
+      ),
+    ),
   });
 });
 
@@ -762,8 +753,8 @@ router.post("/:id/attachments", requireAuth, (req, res, next) => {
     select: { displayName: true },
   });
   const attachment = await prisma.$transaction(async (tx) => {
-    const row = await tx.taskAttachment.create({
-      data: {
+    const row = await insertTaskAttachment(
+      {
         taskId,
         storedPath,
         originalName: file.originalname,
@@ -771,14 +762,12 @@ router.post("/:id/attachments", requireAuth, (req, res, next) => {
         fileSize: file.size,
         uploadedById: actor.id,
       },
-      include: {
-        uploadedBy: { select: { id: true, displayName: true } },
-      },
-    });
+      tx,
+    );
     await tx.taskActivity.create({
       data: {
         taskId,
-        type: TaskActivityType.ATTACHMENT_ADDED,
+        type: TaskActivityType.COMMENT,
         body: `Photo added: ${file.originalname}`,
         createdById: actor.id,
       },
@@ -794,7 +783,12 @@ router.post("/:id/attachments", requireAuth, (req, res, next) => {
       statusLabel: "photo uploaded",
     });
   }
-  res.status(201).json(serializeAttachment(attachment));
+  res.status(201).json(
+    serializeTaskAttachmentApi(
+      attachment,
+      actorUser?.displayName ?? "Unknown",
+    ),
+  );
 });
 
 router.get("/:id/attachments/:attachmentId/file", requireAuth, async (req, res) => {
@@ -814,16 +808,14 @@ router.get("/:id/attachments/:attachmentId/file", requireAuth, async (req, res) 
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  const attachment = await prisma.taskAttachment.findFirst({
-    where: { id: attachmentId, taskId },
-  });
+  const attachment = await getTaskAttachmentById(attachmentId, taskId);
   if (!attachment) {
     res.status(404).json({ error: "Not found" });
     return;
   }
   let abs: string;
   try {
-    abs = resolveTaskAttachmentPath(attachment.storedPath);
+    abs = resolveTaskAttachmentPath(attachment.stored_path);
   } catch {
     res.status(400).json({ error: "Invalid file path" });
     return;
@@ -832,10 +824,10 @@ router.get("/:id/attachments/:attachmentId/file", requireAuth, async (req, res) 
     res.status(404).json({ error: "File missing on server" });
     return;
   }
-  res.setHeader("Content-Type", attachment.mimeType);
+  res.setHeader("Content-Type", attachment.mime_type);
   res.setHeader(
     "Content-Disposition",
-    `inline; filename="${attachment.originalName.replace(/"/g, "")}"`,
+    `inline; filename="${attachment.original_name.replace(/"/g, "")}"`,
   );
   res.sendFile(abs);
 });
@@ -853,27 +845,25 @@ router.delete("/:id/attachments/:attachmentId", requireAuth, async (req, res) =>
     res.status(404).json({ error: "Not found" });
     return;
   }
-  const attachment = await prisma.taskAttachment.findFirst({
-    where: { id: attachmentId, taskId },
-  });
+  const attachment = await getTaskAttachmentById(attachmentId, taskId);
   if (!attachment) {
     res.status(404).json({ error: "Not found" });
     return;
   }
   const isManager = await canManageTask(actor, task);
-  if (!isManager && attachment.uploadedById !== actor.id) {
+  if (!isManager && attachment.uploaded_by_id !== actor.id) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
   try {
-    const abs = resolveTaskAttachmentPath(attachment.storedPath);
+    const abs = resolveTaskAttachmentPath(attachment.stored_path);
     if (fs.existsSync(abs)) {
       fs.unlinkSync(abs);
     }
   } catch {
     /* ignore missing file on disk */
   }
-  await prisma.taskAttachment.delete({ where: { id: attachmentId } });
+  await deleteTaskAttachment(attachmentId);
   res.status(204).send();
 });
 
