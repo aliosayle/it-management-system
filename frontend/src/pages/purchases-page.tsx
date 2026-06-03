@@ -880,7 +880,8 @@ export default function PurchasesPage() {
         <AppDataGrid
           permissionResource="purchases"
           key={gridRefresh}
-          persistenceKey="itm-grid-purchases-v8"
+          persistenceKey="itm-grid-purchases-v9"
+          keyExpr="id"
           dataSource={dataSource}
           repaintChangesOnly
           height="100%"
@@ -904,7 +905,10 @@ export default function PurchasesPage() {
             notify(getDataGridErrorMessage(e), "error", 5000);
           }}
         >
-          <MasterDetail enabled render={renderPurchaseLinesDetail} />
+          <MasterDetail
+            enabled
+            render={renderPurchaseLinesDetail}
+          />
           <FilterRow visible />
           <Column dataField="createdAt" dataType="datetime" caption="When" width={132} />
           <Column
@@ -925,7 +929,13 @@ export default function PurchasesPage() {
             width={92}
           />
           <Column dataField="createdByName" caption="Recorded by" width={96} minWidth={72} />
-          <Column type="buttons" width={96} allowResizing={false}>
+          <Column
+            type="buttons"
+            width={96}
+            allowResizing={false}
+            allowFiltering={false}
+            allowHeaderFiltering={false}
+          >
             <ColumnButton
               hint="Edit"
               icon="edit"

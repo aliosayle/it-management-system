@@ -1,17 +1,12 @@
 import {
   forwardRef,
   useCallback,
-  useEffect,
   useRef,
-  useState,
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
 import type { ToolbarPreparingEvent } from "devextreme/ui/data_grid";
-import type { OptionChangedEvent } from "devextreme/ui/data_grid";
 import type dxDataGrid from "devextreme/ui/data_grid";
-import type dxFilterBuilder from "devextreme/ui/filter_builder";
-import type { Field } from "devextreme/ui/filter_builder";
 import { usePagePermissions } from "../hooks/use-permissions";
 import type { PermissionResource } from "../lib/permissions";
 import DataGrid, {
@@ -21,11 +16,8 @@ import DataGrid, {
   HeaderFilter,
   StateStoring,
 } from "devextreme-react/data-grid";
-import FilterBuilder, {
-  type FilterBuilderRef,
-} from "devextreme-react/filter-builder";
 import notify from "devextreme/ui/notify";
-import type { ContentReadyEvent, ExportingEvent } from "devextreme/ui/data_grid";
+import type { ContentReadyEvent, ExportingEvent, InitializedEvent } from "devextreme/ui/data_grid";
 import { getErrorMessage } from "../utils/error-message";
 import {
   exportDataGridToExcel,
@@ -47,72 +39,115 @@ function mergeGridSection<T extends Record<string, unknown>>(
   return { ...defaults, ...override };
 }
 
-function buildFilterFields(grid: dxDataGrid): Field[] {
-  return grid
-    .getVisibleColumns()
-    .filter(
-      (c) =>
-        typeof c.dataField === "string" &&
-        Boolean(c.dataField) &&
-        c.allowFiltering !== false &&
-        c.type !== "buttons" &&
-        c.type !== "adaptive",
-    )
-    .map((c) => {
-      const field: Field = {
-        dataField: c.dataField as string,
-        caption:
-          typeof c.caption === "string" && c.caption
-            ? c.caption
-            : (c.dataField as string),
-      };
-      if (c.dataType) {
-        field.dataType = c.dataType as Field["dataType"];
-      }
-      return field;
-    });
-}
-
-function filterFieldsSignature(fields: Field[]): string {
-  return fields.map((f) => `${f.dataField}:${f.dataType ?? ""}`).join("|");
-}
-
-function filterValuesEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (a == null && b == null) return true;
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
-  }
-}
-
-type DataGridWithCombinedFilter = dxDataGrid & {
-  getCombinedFilter?: (returnDataField?: boolean) => unknown;
+type ColumnOpts = {
+  dataField?: string | null;
+  name?: string;
+  type?: string;
+  command?: string;
+  allowFiltering?: boolean;
+  allowHeaderFiltering?: boolean;
 };
 
-/** DevExtreme: header filter / filter row / search can live outside filterValue until sync is on. */
-function getGridFilterExpression(grid: dxDataGrid): unknown {
-  const extended = grid as DataGridWithCombinedFilter;
-  if (typeof extended.getCombinedFilter === "function") {
-    try {
-      const combined = extended.getCombinedFilter();
-      if (combined !== undefined) {
-        return combined;
-      }
-    } catch {
-      /* grid not ready */
-    }
-  }
-  return grid.option("filterValue");
+function columnDisallowsFilter(col: ColumnOpts): boolean {
+  const noField =
+    (col.dataField === undefined || col.dataField === null || col.dataField === "") &&
+    !col.name;
+  return (
+    noField ||
+    col.type === "buttons" ||
+    col.type === "adaptive" ||
+    col.type === "detailExpand" ||
+    Boolean(col.command)
+  );
 }
 
-function isGridFilterOptionChange(fullName: string | undefined): boolean {
-  if (!fullName) return false;
-  if (fullName === "filterValue" || fullName === "searchPanel.text") return true;
-  if (/^columns\[\d+\]\.filterValues?$/.test(fullName)) return true;
-  if (fullName.startsWith("filterRow")) return true;
-  return false;
+/**
+ * filterSyncEnabled requires dataField or name on every filterable column.
+ * Command, master-detail, and button columns must opt out or filter sync throws.
+ */
+function ensureFilterSafeColumns(grid: dxDataGrid): void {
+  const indices = new Set<number>();
+  const count = grid.columnCount();
+  for (let i = 0; i < count; i++) {
+    indices.add(i);
+  }
+  for (const col of grid.getVisibleColumns()) {
+    const idx = (col as { index?: number; visibleIndex?: number }).index;
+    const visibleIdx = (col as { visibleIndex?: number }).visibleIndex;
+    if (typeof idx === "number") {
+      indices.add(idx);
+    } else if (typeof visibleIdx === "number") {
+      indices.add(visibleIdx);
+    }
+  }
+
+  for (const i of indices) {
+    const col = grid.columnOption(i) as ColumnOpts;
+    if (!columnDisallowsFilter(col)) {
+      continue;
+    }
+    if (col.allowFiltering !== false || col.allowHeaderFiltering !== false) {
+      grid.columnOption(i, {
+        allowFiltering: false,
+        allowHeaderFiltering: false,
+      });
+    }
+  }
+
+  for (const command of ["expand", "select", "edit", "delete"]) {
+    try {
+      grid.columnOption(`command:${command}`, {
+        allowFiltering: false,
+        allowHeaderFiltering: false,
+      });
+    } catch {
+      /* column not present */
+    }
+  }
+}
+
+function isArrayDataSource(grid: dxDataGrid): boolean {
+  return Array.isArray(grid.option("dataSource"));
+}
+
+/**
+ * Combined filter sync (search + header filter + filter panel) is reliable for in-memory arrays.
+ * CustomStore / remote sources can hit null dataField during sync (e.g. master-detail expand).
+ */
+function resolveFilterSyncEnabled(
+  grid: dxDataGrid,
+  showFilterBuilder: boolean,
+  explicit: boolean | "auto" | undefined,
+): boolean | "auto" {
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  if (!showFilterBuilder) {
+    return false;
+  }
+  return isArrayDataSource(grid) ? "auto" : false;
+}
+
+function sanitizeStoredGridState(state: unknown): unknown {
+  if (!state || typeof state !== "object") {
+    return state;
+  }
+  const next = { ...(state as Record<string, unknown>) };
+  delete next.filterValue;
+  const columns = next.columns;
+  if (Array.isArray(columns)) {
+    next.columns = columns.map((col) => {
+      if (!col || typeof col !== "object") {
+        return col;
+      }
+      const c = { ...(col as Record<string, unknown>) };
+      delete c.filterValue;
+      delete c.filterValues;
+      delete c.selectedFilterOperation;
+      return c;
+    });
+  }
+  return next;
 }
 
 export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
@@ -138,14 +173,11 @@ export type AppDataGridProps = ComponentPropsWithoutRef<typeof DataGrid> & {
   autoNumericFooter?: boolean;
   /** When set, toolbar add row stays visible but is disabled when the user lacks add permission. */
   permissionResource?: PermissionResource;
-  /** DevExtreme Filter Builder panel below the grid (default true). */
-  showFilterBuilder?: boolean;
   /**
-   * Keeps header filter, filter row, search panel, and filter builder on one expression
-   * (`filterValue`). Defaults to true when the filter builder panel is shown.
-   * @see https://js.devexpress.com/Documentation/ApiReference/UI_Components/dxDataGrid/Configuration/#filterSyncEnabled
+   * Integrated DevExtreme filter panel + filter builder (synced with header filter and search).
+   * @see https://js.devexpress.com/Documentation/Guide/UI_Components/DataGrid/Filtering_and_Searching/#Filter_Panel_with_Filter_Builder
    */
-  filterSyncEnabled?: boolean | "auto";
+  showFilterBuilder?: boolean;
 };
 
 function footerSignature(
@@ -220,14 +252,19 @@ function applyAutoNumericSummaries(component: dxDataGrid): void {
 
   const nextTotals = [...userTotals, ...autoTotals];
 
-  component.option("summary", {
-    ...summaryOption,
-    totalItems: nextTotals,
-    recalculateWhileEditing: summaryOption?.recalculateWhileEditing ?? true,
-  });
+  component.beginUpdate();
+  try {
+    component.option("summary", {
+      ...summaryOption,
+      totalItems: nextTotals,
+      recalculateWhileEditing: summaryOption?.recalculateWhileEditing ?? true,
+    });
+  } finally {
+    component.endUpdate();
+  }
 }
 
-/** DevExtreme DataGrid with toolbar, header filters, filter builder below, export, and optional state. */
+/** DevExtreme DataGrid with toolbar, header filters, integrated filter panel/builder, export, and optional state. */
 export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
   function AppDataGrid(
     {
@@ -250,16 +287,19 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       exportFileName,
       permissionResource,
       showFilterBuilder = true,
-      filterSyncEnabled: filterSyncEnabledProp,
       onContentReady,
+      onInitialized: onInitializedProp,
       onExporting: onExportingProp,
       onToolbarPreparing: onToolbarPreparingProp,
-      onOptionChanged: onOptionChangedProp,
       summary,
       columnFixing,
       groupPanel,
       grouping,
       loadPanel,
+      filterPanel: filterPanelProp,
+      filterBuilder: filterBuilderProp,
+      filterSyncEnabled: filterSyncEnabledProp,
+      dataSource: dataSourceProp,
       children,
       searchPanel: searchPanelProp,
       export: exportProp,
@@ -272,11 +312,11 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
     const canAdd = pagePerms.canAdd;
     const showAdd = showAddRowButton !== false;
 
+    const initialFilterSyncEnabled =
+      filterSyncEnabledProp ??
+      (showFilterBuilder ? (Array.isArray(dataSourceProp) ? "auto" : false) : false);
+
     const gridRef = useRef<DataGridRef>(null);
-    const filterBuilderRef = useRef<FilterBuilderRef>(null);
-    const filterFieldsSigRef = useRef("");
-    const syncingFilterRef = useRef(false);
-    const [filterFields, setFilterFields] = useState<Field[]>([]);
 
     const combinedGridRef = useCallback(
       (node: DataGridRef | null) => {
@@ -290,21 +330,32 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       [ref],
     );
 
-    const getGrid = useCallback((): dxDataGrid | null => {
+    const prepareGridColumns = useCallback((grid: dxDataGrid) => {
       try {
-        return gridRef.current?.instance() ?? null;
+        ensureFilterSafeColumns(grid);
       } catch {
-        return null;
+        /* columns not ready */
       }
     }, []);
 
-    const getFilterBuilder = useCallback((): dxFilterBuilder | null => {
-      try {
-        return filterBuilderRef.current?.instance() ?? null;
-      } catch {
-        return null;
-      }
-    }, []);
+    const handleInitialized = useCallback(
+      (e: InitializedEvent) => {
+        const grid = e.component;
+        if (grid) {
+          prepareGridColumns(grid);
+          const sync = resolveFilterSyncEnabled(
+            grid,
+            showFilterBuilder,
+            filterSyncEnabledProp,
+          );
+          if (grid.option("filterSyncEnabled") !== sync) {
+            grid.option("filterSyncEnabled", sync);
+          }
+        }
+        onInitializedProp?.(e);
+      },
+      [onInitializedProp, prepareGridColumns, showFilterBuilder, filterSyncEnabledProp],
+    );
 
     const handleToolbarPreparing = useCallback(
       (e: ToolbarPreparingEvent) => {
@@ -397,95 +448,49 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
       loadPanel as Partial<{ enabled: boolean | "auto" }> | undefined,
     );
 
-    const applyFilterToGrid = useCallback(
-      (value: unknown) => {
-        const grid = getGrid();
-        if (!grid) return;
-        const current = grid.option("filterValue");
-        if (filterValuesEqual(current, value)) return;
-        syncingFilterRef.current = true;
-        try {
-          grid.option("filterValue", value as never);
-        } finally {
-          queueMicrotask(() => {
-            syncingFilterRef.current = false;
-          });
+    const filterPanelOpts = showFilterBuilder
+      ? mergeGridSection(
+          {
+            visible: true,
+            texts: {
+              createFilter: "Create filter…",
+              clearFilter: "Clear filter",
+            },
+          },
+          filterPanelProp as Record<string, unknown> | undefined,
+        )
+      : mergeGridSection(
+          { visible: false },
+          filterPanelProp as Record<string, unknown> | undefined,
+        );
+
+    const stateStoringCustomLoad = useCallback(() => {
+      if (!persistenceKey) {
+        return null;
+      }
+      try {
+        const raw = localStorage.getItem(persistenceKey);
+        if (!raw) {
+          return null;
         }
-      },
-      [getGrid],
-    );
-
-    const applyFilterToBuilder = useCallback(
-      (value: unknown) => {
-        const fb = getFilterBuilder();
-        if (!fb) return;
-        const current = fb.option("value");
-        if (filterValuesEqual(current, value)) return;
-        syncingFilterRef.current = true;
-        try {
-          fb.option("value", value as never);
-        } finally {
-          queueMicrotask(() => {
-            syncingFilterRef.current = false;
-          });
-        }
-      },
-      [getFilterBuilder],
-    );
-
-    const syncFilterBuilderFromGrid = useCallback(() => {
-      if (!showFilterBuilder || syncingFilterRef.current) return;
-      const grid = getGrid();
-      if (!grid) return;
-      applyFilterToBuilder(getGridFilterExpression(grid));
-    }, [showFilterBuilder, getGrid, applyFilterToBuilder]);
-
-    const handleFilterBuilderValueChanged = useCallback(
-      (e: { value?: unknown }) => {
-        applyFilterToGrid(e.value);
-      },
-      [applyFilterToGrid],
-    );
-
-    const handleOptionChanged = useCallback(
-      (e: OptionChangedEvent) => {
-        onOptionChangedProp?.(e);
-        if (!showFilterBuilder || syncingFilterRef.current) return;
-        if (!isGridFilterOptionChange(e.fullName)) return;
-        queueMicrotask(() => {
-          syncFilterBuilderFromGrid();
-        });
-      },
-      [onOptionChangedProp, showFilterBuilder, syncFilterBuilderFromGrid],
-    );
-
-    const filterSyncEnabled =
-      filterSyncEnabledProp ?? (showFilterBuilder ? true : "auto");
-
-    useEffect(() => {
-      if (!showFilterBuilder || filterFields.length === 0) return;
-      queueMicrotask(() => {
-        syncFilterBuilderFromGrid();
-      });
-    }, [showFilterBuilder, filterFields, syncFilterBuilderFromGrid]);
+        return sanitizeStoredGridState(JSON.parse(raw) as unknown);
+      } catch {
+        return null;
+      }
+    }, [persistenceKey]);
 
     const handleContentReady = useCallback(
       (e: ContentReadyEvent) => {
-        onContentReady?.(e);
         const grid = e.component;
+        prepareGridColumns(grid);
+        const sync = resolveFilterSyncEnabled(grid, showFilterBuilder, filterSyncEnabledProp);
+        if (grid.option("filterSyncEnabled") !== sync) {
+          grid.option("filterSyncEnabled", sync);
+        }
+        onContentReady?.(e);
         queueMicrotask(() => {
           try {
-            if (showFilterBuilder) {
-              const fields = buildFilterFields(grid);
-              const sig = filterFieldsSignature(fields);
-              if (sig && sig !== filterFieldsSigRef.current) {
-                filterFieldsSigRef.current = sig;
-                setFilterFields(fields);
-                queueMicrotask(() => {
-                  syncFilterBuilderFromGrid();
-                });
-              }
-            }
+            prepareGridColumns(grid);
             if (autoNumericFooter !== false) {
               applyAutoNumericSummaries(grid);
             }
@@ -494,7 +499,13 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
           }
         });
       },
-      [onContentReady, autoNumericFooter, showFilterBuilder, syncFilterBuilderFromGrid],
+      [
+        onContentReady,
+        autoNumericFooter,
+        prepareGridColumns,
+        showFilterBuilder,
+        filterSyncEnabledProp,
+      ],
     );
 
     const shellStyle =
@@ -504,75 +515,68 @@ export const AppDataGrid = forwardRef<DataGridRef, AppDataGridProps>(
 
     return (
       <div
-        className={["app-data-grid-shell", className].filter(Boolean).join(" ")}
+        className={[
+          "app-data-grid-shell",
+          showFilterBuilder ? "app-data-grid-shell--filter-panel" : null,
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
         style={shellStyle}
       >
-        <div className="app-data-grid-shell__grid">
-          <DataGrid
-            ref={combinedGridRef}
-            className={["dx-datagrid-app", "dx-card", "wide-card"].filter(Boolean).join(" ")}
-            showBorders={showBorders ?? true}
-            showColumnLines={rest.showColumnLines ?? true}
-            showRowLines={rest.showRowLines ?? true}
-            rowAlternationEnabled={rowAlternationEnabled ?? true}
-            columnAutoWidth={columnAutoWidth ?? true}
-            columnMinWidth={columnMinWidth ?? 64}
-            width={width ?? "100%"}
-            height="100%"
-            allowColumnReordering={allowColumnReordering ?? true}
-            allowColumnResizing={allowColumnResizing ?? true}
-            columnResizingMode={columnResizingMode ?? "widget"}
-            columnFixing={columnFixingOpts}
-            groupPanel={groupPanelOpts}
-            grouping={groupingOpts}
-            searchPanel={searchPanel}
-            export={exportOpts}
-            columnChooser={columnChooserOpts}
-            loadPanel={loadPanelOpts}
-            filterSyncEnabled={filterSyncEnabled}
-            summary={summary}
-            onContentReady={handleContentReady}
-            onExporting={handleExporting}
-            onToolbarPreparing={handleToolbarPreparing}
-            onOptionChanged={handleOptionChanged}
-            {...rest}
-          >
-            <Toolbar>
-              {showAdd ? <ToolbarItem name="addRowButton" location="before" /> : null}
-              {toolbarItems}
-              <ToolbarItem name="searchPanel" locateInMenu="auto" />
-              <ToolbarItem name="exportButton" locateInMenu="auto" />
-              <ToolbarItem name="columnChooserButton" locateInMenu="auto" />
-            </Toolbar>
-            <HeaderFilter visible allowSearch />
-            {persistenceKey ? (
-              <StateStoring
-                enabled
-                type="localStorage"
-                storageKey={persistenceKey}
-                savingTimeout={500}
-              />
-            ) : null}
-            {children}
-          </DataGrid>
-        </div>
-        {showFilterBuilder ? (
-          <div className="app-data-grid-shell__filter-builder">
-            <div className="app-data-grid-shell__filter-builder-label">Filter</div>
-            {filterFields.length > 0 ? (
-              <FilterBuilder
-                ref={filterBuilderRef}
-                fields={filterFields}
-                onValueChanged={handleFilterBuilderValueChanged}
-                onContentReady={() => {
-                  queueMicrotask(() => {
-                    syncFilterBuilderFromGrid();
-                  });
-                }}
-              />
-            ) : null}
-          </div>
-        ) : null}
+        <DataGrid
+          ref={combinedGridRef}
+          className={["dx-datagrid-app", "dx-card", "wide-card"].filter(Boolean).join(" ")}
+          showBorders={showBorders ?? true}
+          showColumnLines={rest.showColumnLines ?? true}
+          showRowLines={rest.showRowLines ?? true}
+          rowAlternationEnabled={rowAlternationEnabled ?? true}
+          columnAutoWidth={columnAutoWidth ?? true}
+          columnMinWidth={columnMinWidth ?? 64}
+          width={width ?? "100%"}
+          height="100%"
+          allowColumnReordering={allowColumnReordering ?? true}
+          allowColumnResizing={allowColumnResizing ?? true}
+          columnResizingMode={columnResizingMode ?? "widget"}
+          columnFixing={columnFixingOpts}
+          groupPanel={groupPanelOpts}
+          grouping={groupingOpts}
+          searchPanel={searchPanel}
+          export={exportOpts}
+          columnChooser={columnChooserOpts}
+          loadPanel={loadPanelOpts}
+          filterSyncEnabled={initialFilterSyncEnabled}
+          dataSource={dataSourceProp}
+          filterPanel={filterPanelOpts}
+          filterBuilder={filterBuilderProp}
+          summary={summary}
+          onInitialized={handleInitialized}
+          onContentReady={handleContentReady}
+          onExporting={handleExporting}
+          onToolbarPreparing={handleToolbarPreparing}
+          {...rest}
+        >
+          <Toolbar>
+            {showAdd ? <ToolbarItem name="addRowButton" location="before" /> : null}
+            {toolbarItems}
+            <ToolbarItem name="searchPanel" locateInMenu="auto" />
+            <ToolbarItem name="exportButton" locateInMenu="auto" />
+            <ToolbarItem name="columnChooserButton" locateInMenu="auto" />
+          </Toolbar>
+          <HeaderFilter visible search={{ enabled: true }} />
+          {persistenceKey ? (
+            <StateStoring
+              enabled
+              type="custom"
+              customLoad={stateStoringCustomLoad}
+              customSave={(state) => {
+                localStorage.setItem(persistenceKey, JSON.stringify(state));
+              }}
+              savingTimeout={500}
+            />
+          ) : null}
+          {children}
+        </DataGrid>
       </div>
     );
   },
