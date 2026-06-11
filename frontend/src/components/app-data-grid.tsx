@@ -29,6 +29,9 @@ const AUTO_NUMERIC_SUMMARY_PREFIX = "__appAutoSum:";
 /** Avoids redundant summary.option() calls (can retrigger load panel / remote reshape). */
 const lastAutoFooterSig = new WeakMap<object, string>();
 
+/** columnOption() on master-detail expand columns can clear active filters if repeated. */
+const filterSafeColumnsPrepared = new WeakSet<object>();
+
 function mergeGridSection<T extends Record<string, unknown>>(
   defaults: T,
   override: Partial<T> | undefined | null,
@@ -66,6 +69,10 @@ function columnDisallowsFilter(col: ColumnOpts): boolean {
  * Command, master-detail, and button columns must opt out or filter sync throws.
  */
 function ensureFilterSafeColumns(grid: dxDataGrid): void {
+  if (filterSafeColumnsPrepared.has(grid)) {
+    return;
+  }
+
   const indices = new Set<number>();
   const count = grid.columnCount();
   for (let i = 0; i < count; i++) {
@@ -96,14 +103,19 @@ function ensureFilterSafeColumns(grid: dxDataGrid): void {
 
   for (const command of ["expand", "select", "edit", "delete"]) {
     try {
-      grid.columnOption(`command:${command}`, {
-        allowFiltering: false,
-        allowHeaderFiltering: false,
-      });
+      const col = grid.columnOption(`command:${command}`) as ColumnOpts;
+      if (col.allowFiltering !== false || col.allowHeaderFiltering !== false) {
+        grid.columnOption(`command:${command}`, {
+          allowFiltering: false,
+          allowHeaderFiltering: false,
+        });
+      }
     } catch {
       /* column not present */
     }
   }
+
+  filterSafeColumnsPrepared.add(grid);
 }
 
 function isArrayDataSource(grid: dxDataGrid): boolean {
@@ -128,12 +140,15 @@ function resolveFilterSyncEnabled(
   return isArrayDataSource(grid) ? "auto" : false;
 }
 
+/**
+ * Keeps persisted filters but drops shapes DevExtreme cannot restore (e.g. filterValues
+ * saved as a scalar instead of an array), which otherwise throw on grid init.
+ */
 function sanitizeStoredGridState(state: unknown): unknown {
   if (!state || typeof state !== "object") {
     return state;
   }
   const next = { ...(state as Record<string, unknown>) };
-  delete next.filterValue;
   const columns = next.columns;
   if (Array.isArray(columns)) {
     next.columns = columns.map((col) => {
@@ -141,9 +156,14 @@ function sanitizeStoredGridState(state: unknown): unknown {
         return col;
       }
       const c = { ...(col as Record<string, unknown>) };
-      delete c.filterValue;
-      delete c.filterValues;
-      delete c.selectedFilterOperation;
+      const filterValues = c.filterValues;
+      if (
+        filterValues !== undefined &&
+        filterValues !== null &&
+        !Array.isArray(filterValues)
+      ) {
+        delete c.filterValues;
+      }
       return c;
     });
   }

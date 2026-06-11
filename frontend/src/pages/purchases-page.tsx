@@ -8,6 +8,7 @@ import {
   ColumnButton,
   Item as GridToolbarItem,
   MasterDetail,
+  type DataGridRef,
 } from "devextreme-react/data-grid";
 import Button from "devextreme-react/button";
 import Popup from "devextreme-react/popup";
@@ -341,7 +342,7 @@ export default function PurchasesPage() {
   const [bonFile, setBonFile] = useState<File | null>(null);
   const [existingBonName, setExistingBonName] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [gridRefresh, setGridRefresh] = useState(0);
+  const gridRef = useRef<DataGridRef>(null);
   /** Status when the edit form was opened (used for cancel-complete PATCH rules). */
   const [statusWhenLoaded, setStatusWhenLoaded] = useState<
     "PENDING" | "COMPLETE" | "CANCELLED" | null
@@ -491,6 +492,10 @@ export default function PurchasesPage() {
       }),
     [],
   );
+
+  const reloadGrid = useCallback(() => {
+    gridRef.current?.instance().refresh();
+  }, []);
 
   const hasLegacyPersonnelBin = useMemo(
     () => lines.some((l) => l.destination === "PERSONNEL_BIN"),
@@ -804,7 +809,7 @@ export default function PurchasesPage() {
       }
       closePopup();
       resetForm();
-      setGridRefresh((k) => k + 1);
+      reloadGrid();
     } catch (e: unknown) {
       notify(getErrorMessage(e, "Failed to save purchase"), "error", 5000);
     } finally {
@@ -821,6 +826,7 @@ export default function PurchasesPage() {
     editingId,
     closePopup,
     resetForm,
+    reloadGrid,
     isAlreadyCancelled,
     statusWhenLoaded,
   ]);
@@ -842,12 +848,12 @@ export default function PurchasesPage() {
           body: JSON.stringify({ status: "COMPLETE" }),
         });
         notify("Purchase marked complete", "success", 2000);
-        setGridRefresh((k) => k + 1);
+        reloadGrid();
       } catch (e: unknown) {
         notify(getErrorMessage(e, "Failed to mark purchase complete"), "error", 5000);
       }
     },
-    [],
+    [reloadGrid],
   );
 
   const deletePurchase = useCallback(
@@ -859,12 +865,12 @@ export default function PurchasesPage() {
       try {
         await apiFetch(`/api/purchases/${row.id}`, { method: "DELETE" });
         notify("Purchase deleted", "success", 2000);
-        setGridRefresh((k) => k + 1);
+        reloadGrid();
       } catch (e: unknown) {
         notify(getErrorMessage(e, "Delete failed"), "error", 5000);
       }
     },
-    [],
+    [reloadGrid],
   );
 
   const downloadBon = useCallback(async (row: PurchaseListRow) => {
@@ -903,8 +909,8 @@ export default function PurchasesPage() {
 
       <div className="page-grid-body">
         <AppDataGrid
+          ref={gridRef}
           permissionResource="purchases"
-          key={gridRefresh}
           persistenceKey="itm-grid-purchases-v10"
           className="purchases-grid"
           keyExpr="id"
