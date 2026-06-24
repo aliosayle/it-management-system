@@ -34,11 +34,18 @@ const createSchema = z.object({
 
 const updateSchema = createSchema.partial();
 
-const binItemSchema = z.object({
-  productId: z.string().min(1),
-  quantity: z.number().positive(),
-  note: z.string().optional().nullable(),
-});
+const binItemSchema = z
+  .object({
+    productId: z.string().min(1),
+    /** Set absolute bin line quantity (personnel bin grid add row). */
+    quantity: z.number().positive().optional(),
+    /** Issue this many units from warehouse and add to the bin (products assign). */
+    addQuantity: z.number().positive().optional(),
+    note: z.string().optional().nullable(),
+  })
+  .refine((data) => data.quantity !== undefined || data.addQuantity !== undefined, {
+    message: "quantity or addQuantity is required",
+  });
 
 const binPatchSchema = z.object({
   quantity: z.number().positive().optional(),
@@ -203,8 +210,7 @@ router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req,
   }
   const personnelId = req.params.id;
   const actorUserId = req.user!.sub;
-  const { productId, quantity, note } = parsed.data;
-  const newQty = new Prisma.Decimal(quantity);
+  const { productId, quantity, addQuantity, note } = parsed.data;
 
   try {
     const row = await prisma.$transaction(async (tx) => {
@@ -225,6 +231,11 @@ router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req,
         ? new Prisma.Decimal(existing.quantity.toString())
         : new Prisma.Decimal(0);
 
+      const newQty =
+        addQuantity !== undefined
+          ? oldQty.plus(new Prisma.Decimal(addQuantity))
+          : new Prisma.Decimal(quantity!);
+
       await applyBinQuantityChange(tx, {
         productId,
         oldBinQuantity: oldQty,
@@ -232,6 +243,9 @@ router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req,
         userId: actorUserId,
         movementNote: binMovementNote(personnel, note),
       });
+
+      const noteForRow =
+        note !== undefined && note !== null ? note : existing?.note ?? undefined;
 
       return tx.personnelBinItem.upsert({
         where: {
@@ -241,11 +255,11 @@ router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req,
           personnelId,
           productId,
           quantity: newQty,
-          note: note ?? undefined,
+          note: noteForRow,
         },
         update: {
           quantity: newQty,
-          note: note ?? undefined,
+          ...(note !== undefined && note !== null ? { note } : {}),
         },
         include: { product: { select: { sku: true, name: true } } },
       });

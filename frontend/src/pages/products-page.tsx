@@ -441,16 +441,33 @@ export default function ProductsPage() {
         method: "POST",
         body: JSON.stringify({
           productId,
-          quantity,
+          addQuantity: quantity,
           note: note.trim() || null,
         }),
       });
-      notify("Added to personal bin", "success", 2000);
+      notify("Issued from warehouse to personal bin", "success", 2000);
       setAssignOpen(false);
+      const grid = gridRef.current?.instance();
+      if (grid) {
+        await grid.refresh();
+        const refreshed = grid
+          .getVisibleRows()
+          .find((r) => r.key === productId)?.data as { quantityOnHand?: number } | undefined;
+        if (refreshed && typeof refreshed.quantityOnHand === "number") {
+          setStatementProduct((prev) =>
+            prev?.id === productId
+              ? { ...prev, quantityOnHand: refreshed.quantityOnHand! }
+              : prev,
+          );
+        }
+      }
+      if (statementOpen && statementProduct?.id === productId) {
+        void loadStatementData(productId);
+      }
     } catch (e: unknown) {
       notify(getErrorMessage(e, "Failed to assign"), "error", 5000);
     }
-  }, [assignForm]);
+  }, [assignForm, statementOpen, statementProduct?.id, loadStatementData]);
 
   const renderMovementPopupContent = useCallback(
     () => (
@@ -951,7 +968,7 @@ export default function ProductsPage() {
             editorType="dxNumberBox"
             editorOptions={{ min: 0.0001, format: "#,##0.####" }}
           >
-            <Label text="Quantity" />
+            <Label text="Quantity to issue from warehouse" />
             <FormRequiredRule />
           </Item>
           <Item
@@ -964,7 +981,12 @@ export default function ProductsPage() {
         </Form>
         <div style={{ padding: "8px 0 0", textAlign: "right" }}>
           <Button text="Cancel" stylingMode="outlined" onClick={() => setAssignOpen(false)} />
-          <Button text="Add to bin" type="default" stylingMode="contained" onClick={submitAssign} />
+          <Button
+            text="Issue to bin"
+            type="default"
+            stylingMode="contained"
+            onClick={() => void submitAssign()}
+          />
         </div>
       </PopupDx>
 
