@@ -107,6 +107,18 @@
   margin-inline-end: 0;
 }
 
+/* Deliveries: four action buttons (view, edit, print, delete) */
+.dx-datagrid.dx-datagrid-app .deliveries-grid-actions,
+.dx-datagrid.dx-datagrid-app th.deliveries-grid-actions,
+.dx-datagrid.dx-datagrid-app td.deliveries-grid-actions {
+  min-width: 168px !important;
+  white-space: nowrap;
+}
+
+.dx-datagrid.dx-datagrid-app .deliveries-grid-actions .dx-datagrid-text-content {
+  overflow: visible;
+}
+
 /* Buttons in data rows (custom ColumnButton, adaptive, etc.) */
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button,
 .dx-datagrid.dx-datagrid-app .dx-datagrid-rowsview .dx-button.dx-button-has-icon {

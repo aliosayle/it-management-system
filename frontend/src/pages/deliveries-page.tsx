@@ -134,6 +134,24 @@ function unitPriceForSource(product: ProductMeta | undefined, source: PriceSourc
   return 0;
 }
 
+function qtyByProductFromDetail(detail: DeliveryDetail): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const line of detail.lines) {
+    map.set(line.productId, (map.get(line.productId) ?? 0) + line.quantity);
+  }
+  return map;
+}
+
+function availableWarehouseQty(
+  product: ProductMeta | undefined,
+  editCreditByProduct: Map<string, number> | null,
+  productId: string,
+): number {
+  if (!product) return 0;
+  const credit = editCreditByProduct?.get(productId) ?? 0;
+  return product.quantityOnHand + credit;
+}
+
 function renderDeliveryLinesDetail(detail: { data?: DeliveryListRow } | DeliveryListRow) {
   const row =
     detail && typeof detail === "object" && "data" in detail
@@ -209,6 +227,11 @@ export default function DeliveriesPage() {
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<FormLine[]>([emptyLine()]);
+  /** Original qty per product on the delivery being edited (credited back on save). */
+  const [editStockCreditByProduct, setEditStockCreditByProduct] = useState<Map<string, number> | null>(
+    null,
+  );
+  const [bulkPriceSource, setBulkPriceSource] = useState<PriceSource>("LAST_PURCHASE");
 
   const [personnel, setPersonnel] = useState<PersonnelRow[]>([]);
   const [sites, setSites] = useState<SiteRow[]>([]);
@@ -256,14 +279,16 @@ export default function DeliveriesPage() {
     setDepartmentId(null);
     setNotes("");
     setLines([emptyLine()]);
+    setEditStockCreditByProduct(null);
   }, []);
 
-  const populateFormFromDetail = useCallback((detail: DeliveryDetail) => {
+  const populateFormFromDetail = useCallback((detail: DeliveryDetail, forEdit: boolean) => {
     setDestination(detail.destination as (typeof DEST_OPTIONS)[number]["value"]);
     setTargetPersonnelId(detail.targetPersonnelId ?? null);
     setTargetSiteId(detail.targetSiteId ?? null);
     setDepartmentId(detail.departmentId ?? null);
     setNotes(detail.notes ?? "");
+    setEditStockCreditByProduct(forEdit ? qtyByProductFromDetail(detail) : null);
     setLines(
       detail.lines.length > 0
         ? detail.lines.map((l) => ({
@@ -288,7 +313,7 @@ export default function DeliveriesPage() {
         const detail = (await apiFetch(`/api/deliveries/${row.id}`)) as DeliveryDetail;
         setEditingId(row.id);
         setViewMode(false);
-        populateFormFromDetail(detail);
+        populateFormFromDetail(detail, true);
         setPopupOpen(true);
       } catch (e: unknown) {
         notify(getErrorMessage(e, "Failed to load delivery"), "error", 5000);
@@ -303,7 +328,7 @@ export default function DeliveriesPage() {
         const detail = (await apiFetch(`/api/deliveries/${row.id}`)) as DeliveryDetail;
         setEditingId(row.id);
         setViewMode(true);
-        populateFormFromDetail(detail);
+        populateFormFromDetail(detail, false);
         setPopupOpen(true);
       } catch (e: unknown) {
         notify(getErrorMessage(e, "Failed to load delivery"), "error", 5000);
@@ -316,7 +341,25 @@ export default function DeliveriesPage() {
     setPopupOpen(false);
     setEditingId(null);
     setViewMode(false);
+    setEditStockCreditByProduct(null);
   }, []);
+
+  const applyPriceSourceToAllLines = useCallback(() => {
+    setLines((prev) =>
+      prev.map((l) => {
+        const product = productById.get(l.productId ?? "");
+        return {
+          ...l,
+          priceSource: bulkPriceSource,
+          unitPrice:
+            bulkPriceSource === "MANUAL"
+              ? l.unitPrice
+              : unitPriceForSource(product, bulkPriceSource),
+        };
+      }),
+    );
+    notify("Price source applied to all lines", "success", 1800);
+  }, [productById, bulkPriceSource]);
 
   const updateLine = useCallback((key: string, patch: Partial<FormLine>) => {
     setLines((prev) =>
@@ -412,9 +455,10 @@ export default function DeliveriesPage() {
     for (let i = 0; i < payloadLines.length; i++) {
       const pl = payloadLines[i]!;
       const product = productById.get(pl.productId);
-      if (product && pl.quantity > product.quantityOnHand) {
+      const available = availableWarehouseQty(product, editStockCreditByProduct, pl.productId);
+      if (product && pl.quantity > available) {
         notify(
-          `Line ${i + 1}: insufficient warehouse stock (${product.quantityOnHand} on hand).`,
+          `Line ${i + 1}: insufficient warehouse stock (${available.toLocaleString(undefined, { maximumFractionDigits: 4 })} available).`,
           "warning",
           4000,
         );
@@ -472,6 +516,7 @@ export default function DeliveriesPage() {
     lines,
     productById,
     editingId,
+    editStockCreditByProduct,
     closePopup,
     resetForm,
     reloadGrid,
@@ -480,11 +525,19 @@ export default function DeliveriesPage() {
 
   const productOptions = useMemo(
     () =>
-      products.map((p) => ({
-        id: p.id,
-        label: `${p.sku} — ${p.name} (${p.quantityOnHand} on hand)`,
-      })),
-    [products],
+      products.map((p) => {
+        const available = availableWarehouseQty(p, editStockCreditByProduct, p.id);
+        const credit = editStockCreditByProduct?.get(p.id) ?? 0;
+        const stockLabel =
+          credit > 0
+            ? `${available.toLocaleString(undefined, { maximumFractionDigits: 4 })} available (incl. ${credit.toLocaleString(undefined, { maximumFractionDigits: 4 })} from this delivery)`
+            : `${p.quantityOnHand.toLocaleString(undefined, { maximumFractionDigits: 4 })} on hand`;
+        return {
+          id: p.id,
+          label: `${p.sku} — ${p.name} (${stockLabel})`,
+        };
+      }),
+    [products, editStockCreditByProduct],
   );
 
   const personnelOptions = useMemo(
@@ -507,7 +560,7 @@ export default function DeliveriesPage() {
           <AppDataGrid
             ref={gridRef}
             permissionResource="deliveries"
-            persistenceKey="itm-grid-deliveries-v1"
+            persistenceKey="itm-grid-deliveries-v2"
             className="deliveries-grid"
             keyExpr="id"
             dataSource={dataSource}
@@ -548,9 +601,14 @@ export default function DeliveriesPage() {
             <Column dataField="createdByName" caption="Created by" width={110} minWidth={80} />
             <Column
               type="buttons"
-              cssClass="grid-actions-column"
-              width={148}
-              allowResizing={false}
+              name="actions"
+              caption="Actions"
+              cssClass="grid-actions-column deliveries-grid-actions"
+              width={168}
+              minWidth={168}
+              fixed
+              fixedPosition="right"
+              allowResizing
               allowFiltering={false}
               allowHeaderFiltering={false}
             >
@@ -599,12 +657,14 @@ export default function DeliveriesPage() {
           onHiding={closePopup}
           showTitle
           title={popupTitle}
-          width={1280}
-          height="auto"
-          maxHeight="92vh"
+          width="96vw"
+          maxWidth={1560}
+          height="92vh"
+          maxHeight={920}
           showCloseButton
+          wrapperAttr={{ class: "delivery-form-popup-wrapper" }}
         >
-          <div className="purchase-form">
+          <div className="purchase-form delivery-form-popup">
             {viewMode ? (
               <div className="purchase-form__alert" role="status">
                 Read-only view. Use Reprint bon to download the delivery note, or close and choose Edit to
@@ -706,8 +766,36 @@ export default function DeliveriesPage() {
               </div>
             </div>
 
-            <div className="purchase-form__section-title">Products</div>
-            <div className="purchase-form__lines">
+            <div className="purchase-form__section-title purchase-form__section-title--with-tools">
+              <span>Products</span>
+              {!formDisabled ? (
+                <div className="purchase-form__bulk-price">
+                  <span className="purchase-form__bulk-price-label">Apply price source to all lines</span>
+                  <div className="purchase-form__control purchase-form__bulk-price-select">
+                    <SelectBox
+                      dataSource={[...PRICE_SOURCE_OPTIONS]}
+                      displayExpr="text"
+                      valueExpr="value"
+                      value={bulkPriceSource}
+                      onValueChanged={(e) =>
+                        setBulkPriceSource((e.value as PriceSource) ?? "LAST_PURCHASE")
+                      }
+                      searchEnabled={false}
+                      showClearButton={false}
+                      width={148}
+                    />
+                  </div>
+                  <Button
+                    text="Apply to all"
+                    icon="rowproperties"
+                    stylingMode="outlined"
+                    type="default"
+                    onClick={applyPriceSourceToAllLines}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="purchase-form__lines delivery-form__lines-scroll">
               <div className="purchase-form__lines-header">
                 <span>#</span>
                 <span>Product</span>
@@ -720,8 +808,12 @@ export default function DeliveriesPage() {
 
               {lines.map((line, idx) => {
                 const product = line.productId ? productById.get(line.productId) : undefined;
+                const availableQty = line.productId
+                  ? availableWarehouseQty(product, editStockCreditByProduct, line.productId)
+                  : 0;
                 const lineTotal = line.quantity * (Number.isFinite(line.unitPrice) ? line.unitPrice : 0);
                 const priceEditable = line.priceSource === "MANUAL";
+                const insufficient = Boolean(product && line.quantity > availableQty);
                 return (
                   <div className="purchase-form__line-row" key={line.key}>
                     <span className="purchase-form__line-num">{idx + 1}</span>
@@ -789,12 +881,16 @@ export default function DeliveriesPage() {
                       disabled={lines.length <= 1 || formDisabled}
                       onClick={() => removeLine(line.key)}
                     />
-                    {product && line.quantity > product.quantityOnHand ? (
+                    {insufficient ? (
                       <span
                         className="purchase-form__hint"
                         style={{ gridColumn: "1 / -1", color: "#c62828" }}
                       >
-                        Insufficient stock: {product.quantityOnHand} on hand
+                        Insufficient stock: {availableQty.toLocaleString(undefined, { maximumFractionDigits: 4 })}{" "}
+                        available
+                        {editStockCreditByProduct && (editStockCreditByProduct.get(line.productId!) ?? 0) > 0
+                          ? " (includes qty from this delivery)"
+                          : ""}
                       </span>
                     ) : null}
                   </div>
