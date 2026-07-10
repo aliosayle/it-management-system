@@ -17,6 +17,9 @@ export type TransferReceipt = {
 };
 
 const FONT = "helvetica";
+const FIELD_FONT_SIZE = 10;
+const ROW_GAP = 10;
+const WRAP_LINE_GAP = 5;
 
 function formatReceiptDate(value: string | Date): string {
   const d = value instanceof Date ? value : new Date(value);
@@ -30,6 +33,16 @@ function formatReceiptDate(value: string | Date): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Human-readable receipt number from issue timestamp (no internal IDs). */
+function formatReceiptNumber(issuedAt: string | Date): string {
+  const d = issuedAt instanceof Date ? issuedAt : new Date(issuedAt);
+  if (Number.isNaN(d.getTime())) {
+    return "TR-UNKNOWN";
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `TR-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
 
 function formatQuantity(value: number): string {
@@ -49,77 +62,66 @@ function fitFontSize(doc: jsPDF, text: string, maxWidth: number, base: number, m
   return size;
 }
 
-function drawUnderlinedField(
+function drawFieldRow(
   doc: jsPDF,
   label: string,
   value: string,
-  labelX: number,
-  baselineY: number,
-  valueX: number,
-  lineEndX: number,
-) {
-  doc.setFont(FONT, "bold");
-  doc.setFontSize(11);
-  doc.text(label, labelX, baselineY);
-
-  doc.setFont(FONT, "normal");
-  if (value) {
-    const size = fitFontSize(doc, value, lineEndX - valueX - 1, 11);
-    doc.setFontSize(size);
-    doc.text(value, valueX, baselineY, { baseline: "alphabetic" });
-    doc.setFontSize(11);
-  }
-
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.25);
-  doc.line(valueX, baselineY + 1.4, lineEndX, baselineY + 1.4);
-}
-
-function drawWrappedField(
-  doc: jsPDF,
-  label: string,
-  value: string,
-  labelX: number,
-  baselineY: number,
-  valueX: number,
-  lineEndX: number,
-  lineGap: number,
+  x: number,
+  y: number,
+  width: number,
 ): number {
+  const labelText = `${label}:`;
   doc.setFont(FONT, "bold");
-  doc.setFontSize(11);
-  doc.text(label, labelX, baselineY);
+  doc.setFontSize(FIELD_FONT_SIZE);
+  doc.text(labelText, x, y);
 
+  const valueX = x + doc.getTextWidth(labelText) + 2;
+  const maxW = Math.max(12, x + width - valueX);
   doc.setFont(FONT, "normal");
-  doc.setFontSize(11);
 
-  const firstLineWidth = lineEndX - valueX - 1;
-  const restLineWidth = lineEndX - labelX - 1;
-  let currentY = baselineY;
+  const lines = (
+    value.trim() ? doc.splitTextToSize(value.trim(), maxW) : [""]
+  ) as string[];
+  let lineY = y;
 
-  if (!value) {
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(0.25);
-    doc.line(valueX, currentY + 1.4, lineEndX, currentY + 1.4);
-    return currentY;
-  }
-
-  const firstLine = doc.splitTextToSize(value, firstLineWidth)[0] ?? "";
-  const remainder = value.slice(firstLine.length).trimStart();
-  const restLines = remainder ? doc.splitTextToSize(remainder, restLineWidth) : [];
-  const allLines = [firstLine, ...restLines];
-
-  allLines.forEach((line, idx) => {
-    const startX = idx === 0 ? valueX : labelX;
-    doc.text(line, startX, currentY);
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(0.25);
-    doc.line(startX, currentY + 1.4, lineEndX, currentY + 1.4);
-    if (idx < allLines.length - 1) {
-      currentY += lineGap;
+  lines.forEach((line, idx) => {
+    if (idx > 0) {
+      lineY += WRAP_LINE_GAP;
     }
+    if (line) {
+      const size = fitFontSize(doc, line, maxW, FIELD_FONT_SIZE, 7);
+      doc.setFontSize(size);
+      doc.text(line, valueX, lineY);
+    }
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.25);
+    doc.line(valueX, lineY + 1.4, x + width, lineY + 1.4);
   });
 
-  return currentY;
+  return lineY + ROW_GAP;
+}
+
+function drawWrappedNote(
+  doc: jsPDF,
+  label: string,
+  value: string,
+  x: number,
+  y: number,
+  width: number,
+): number {
+  doc.setFont(FONT, "bold");
+  doc.setFontSize(FIELD_FONT_SIZE);
+  doc.text(`${label}:`, x, y);
+
+  doc.setFont(FONT, "normal");
+  doc.setFontSize(FIELD_FONT_SIZE);
+  const lines = doc.splitTextToSize(value.trim(), width) as string[];
+  let lineY = y + 5;
+  lines.forEach((line) => {
+    doc.text(line, x, lineY);
+    lineY += WRAP_LINE_GAP;
+  });
+  return lineY + 4;
 }
 
 function drawSignatureFooter(doc: jsPDF, x: number, y: number, totalWidth: number, height: number) {
@@ -210,7 +212,7 @@ export function downloadTransferReceiptPdf(receipt: TransferReceipt): void {
   const title = "STOCK TRANSFER RECEIPT";
   doc.setFont(FONT, "bold");
   doc.setFontSize(14);
-  const titleY = innerY + pad + 6;
+  const titleY = innerY + pad + 8;
   doc.text(title, pageW / 2, titleY, { align: "center" });
   const titleW = doc.getTextWidth(title);
   doc.setLineWidth(0.3);
@@ -218,113 +220,43 @@ export function downloadTransferReceiptPdf(receipt: TransferReceipt): void {
 
   doc.setFont(FONT, "normal");
   doc.setFontSize(9);
-  doc.text(appInfo.title, pageW / 2, titleY + 5.5, { align: "center" });
+  doc.text(appInfo.title, pageW / 2, titleY + 7, { align: "center" });
 
-  const leftColEnd = contentX + contentW * 0.55;
-  const rightColStart = contentX + contentW * 0.58;
-  const rightColEnd = contentRight;
+  const receiptNo = formatReceiptNumber(receipt.issuedAt);
+  let y = titleY + 16;
 
-  let y = titleY + 14;
-
-  const receiptNoLabelW = doc.getTextWidth("Receipt No. ");
-  drawUnderlinedField(
+  y = drawFieldRow(doc, "Receipt No.", receiptNo, contentX, y, contentW);
+  y = drawFieldRow(doc, "Date & time", formatReceiptDate(receipt.issuedAt), contentX, y, contentW);
+  y = drawFieldRow(doc, "Issued by", receipt.issuedBy, contentX, y, contentW);
+  y = drawFieldRow(
     doc,
-    "Receipt No.",
-    receipt.movementId,
+    "Movement",
+    movementTypeLabel(receipt.movementType),
     contentX,
     y,
-    contentX + receiptNoLabelW,
-    leftColEnd,
+    contentW,
   );
+  y = drawFieldRow(doc, "From", receipt.source, contentX, y, contentW);
+  y = drawFieldRow(doc, "To", receipt.destination, contentX, y, contentW);
 
-  const dateLabel = "Date & time: ";
+  y += 2;
   doc.setFont(FONT, "bold");
-  doc.setFontSize(11);
-  doc.text(dateLabel, rightColStart, y);
-  const dateValueX = rightColStart + doc.getTextWidth(dateLabel);
-  doc.setFont(FONT, "normal");
-  doc.text(formatReceiptDate(receipt.issuedAt), dateValueX, y);
-  doc.setLineWidth(0.25);
-  doc.line(dateValueX, y + 1.4, rightColEnd, y + 1.4);
-
-  y += 11;
-
-  const issuedByLabelW = doc.getTextWidth("Issued by: ");
-  drawUnderlinedField(
-    doc,
-    "Issued by:",
-    receipt.issuedBy,
-    contentX,
-    y,
-    contentX + issuedByLabelW,
-    leftColEnd,
-  );
-
-  const typeLabel = "Movement: ";
-  doc.setFont(FONT, "bold");
-  doc.setFontSize(11);
-  doc.text(typeLabel, rightColStart, y);
-  const typeValueX = rightColStart + doc.getTextWidth(typeLabel);
-  doc.setFont(FONT, "normal");
-  const movementLabel = movementTypeLabel(receipt.movementType);
-  doc.text(movementLabel, typeValueX, y);
-  doc.setLineWidth(0.25);
-  doc.line(typeValueX, y + 1.4, rightColEnd, y + 1.4);
-
-  y += 11;
-
-  const sourceLabelW = doc.getTextWidth("From: ");
-  drawUnderlinedField(
-    doc,
-    "From:",
-    receipt.source,
-    contentX,
-    y,
-    contentX + sourceLabelW,
-    contentRight,
-  );
-  y += 11;
-
-  const destLabelW = doc.getTextWidth("To: ");
-  drawUnderlinedField(
-    doc,
-    "To:",
-    receipt.destination,
-    contentX,
-    y,
-    contentX + destLabelW,
-    contentRight,
-  );
-  y += 13;
-
-  doc.setFont(FONT, "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(FIELD_FONT_SIZE);
   doc.text("Items transferred", contentX, y);
-  y += 5;
+  y += 6;
   y = drawProductTable(doc, contentX, y, contentW, receipt);
 
   if (receipt.note?.trim()) {
-    const noteLabelW = doc.getTextWidth("Note: ") + 1;
-    y = drawWrappedField(
-      doc,
-      "Note:",
-      receipt.note.trim(),
-      contentX,
-      y,
-      contentX + noteLabelW,
-      contentRight,
-      6,
-    );
-    y += 8;
+    y = drawWrappedNote(doc, "Note", receipt.note, contentX, y, contentW);
   }
 
   const sigHeight = 30;
   const sigY = innerY + innerH - pad - sigHeight;
   drawSignatureFooter(doc, contentX, sigY, contentW, sigHeight);
 
-  const safeId = receipt.movementId.replace(/[^a-z0-9-_]/gi, "_").slice(0, 24);
-  const safeSku = receipt.productSku.replace(/[^a-z0-9-_]/gi, "_").slice(0, 24);
-  doc.save(`TransferReceipt_${safeSku}_${safeId}.pdf`);
+  const safeSku = receipt.productSku.replace(/[^a-z0-9-_]/gi, "_").slice(0, 32);
+  const safeNo = receiptNo.replace(/[^a-z0-9-_]/gi, "_");
+  doc.save(`TransferReceipt_${safeSku}_${safeNo}.pdf`);
 }
 
 const OUTBOUND_MOVEMENT_TYPES = new Set(["OUT", "SCRAP", "LOSS"]);
