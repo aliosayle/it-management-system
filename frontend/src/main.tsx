@@ -4,6 +4,7 @@ import config from 'devextreme/core/config'
 import './index.css'
 import './styles/app-theme.css'
 import './styles/product-statement-popup.scss'
+import './styles/bon-viewer-popup.scss'
 import './styles/devextreme-license-fix.css'
 import App from './App.tsx'
 

@@ -327,6 +327,79 @@ export function downloadTransferReceiptPdf(receipt: TransferReceipt): void {
   doc.save(`TransferReceipt_${safeSku}_${safeId}.pdf`);
 }
 
+const OUTBOUND_MOVEMENT_TYPES = new Set(["OUT", "SCRAP", "LOSS"]);
+
+export type MovementHistoryRow = {
+  id: string;
+  type: string;
+  quantity: number;
+  balanceAfter: number;
+  note: string | null;
+  createdAt: string;
+  user?: { displayName: string; email: string };
+};
+
+export function canReprintTransferReceipt(movementType: string): boolean {
+  return OUTBOUND_MOVEMENT_TYPES.has(movementType);
+}
+
+export function parseDestinationFromMovementNote(
+  note: string | null,
+  movementType: string,
+): string {
+  if (!note?.trim()) {
+    return canReprintTransferReceipt(movementType)
+      ? "General issue / external"
+      : "—";
+  }
+  const text = note.trim();
+  if (text.startsWith("Personnel bin ·")) {
+    const rest = text.slice("Personnel bin ·".length);
+    const name = rest.split(" · ")[0]?.trim();
+    return name ? `Personal bin — ${name}` : "Personal bin";
+  }
+  if (text.startsWith("Site bin ·")) {
+    const rest = text.slice("Site bin ·".length);
+    const label = rest.split(" · ")[0]?.trim();
+    return label ? `Site bin — ${label}` : "Site bin";
+  }
+  return text;
+}
+
+export function buildTransferReceiptFromMovement(
+  movement: MovementHistoryRow,
+  product: { sku: string; name: string },
+): TransferReceipt | null {
+  if (!canReprintTransferReceipt(movement.type)) {
+    return null;
+  }
+  return {
+    movementId: movement.id,
+    movementType: movement.type,
+    quantity: movement.quantity,
+    balanceAfter: movement.balanceAfter,
+    issuedAt: movement.createdAt,
+    note: movement.note,
+    productSku: product.sku,
+    productName: product.name,
+    issuedBy: movement.user?.displayName?.trim() || movement.user?.email || "—",
+    source: "Warehouse",
+    destination: parseDestinationFromMovementNote(movement.note, movement.type),
+  };
+}
+
+export function reprintTransferReceiptFromMovement(
+  movement: MovementHistoryRow,
+  product: { sku: string; name: string },
+): boolean {
+  const receipt = buildTransferReceiptFromMovement(movement, product);
+  if (!receipt) {
+    return false;
+  }
+  downloadTransferReceiptPdf(receipt);
+  return true;
+}
+
 export function maybeDownloadTransferReceipt(
   payload: { transferReceipt?: TransferReceipt | null } | null | undefined,
 ): void {

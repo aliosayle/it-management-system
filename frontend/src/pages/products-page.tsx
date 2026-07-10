@@ -23,13 +23,16 @@ import Form, {
 } from "devextreme-react/form";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { BonViewerPopup } from "../components/bon-viewer-popup";
 import { PageReadGuard } from "../components/require-page-access";
 import { usePagePermissions } from "../hooks/use-permissions";
 import { StockMovementProductSummary } from "../components/stock-movement-product-summary";
-import { apiFetch, apiFetchBlob } from "../api/client";
+import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 import {
+  canReprintTransferReceipt,
   maybeDownloadTransferReceipt,
+  reprintTransferReceiptFromMovement,
   type TransferReceipt,
 } from "../utils/transfer-receipt-pdf";
 import type { ProductOption } from "../components/personnel-bin-popup";
@@ -144,6 +147,10 @@ export default function ProductsPage() {
   );
   const [statementLoading, setStatementLoading] = useState(false);
   const [statementError, setStatementError] = useState<string | null>(null);
+
+  const [bonViewerOpen, setBonViewerOpen] = useState(false);
+  const [bonViewerPurchaseId, setBonViewerPurchaseId] = useState<string | null>(null);
+  const [bonViewerFileName, setBonViewerFileName] = useState<string | null>(null);
 
   const [savedCategoryLabels, setSavedCategoryLabels] = useState<string[]>([]);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
@@ -375,22 +382,40 @@ export default function ProductsPage() {
     setStatementOpen(true);
   }, []);
 
-  const downloadStatementBon = useCallback(async (row: PurchaseHistoryGridRow) => {
-    if (!row.purchaseId || !row.bonOriginalName) {
+  const openBonViewer = useCallback((purchaseId: string, fileName: string) => {
+    setBonViewerPurchaseId(purchaseId);
+    setBonViewerFileName(fileName);
+    setBonViewerOpen(true);
+  }, []);
+
+  const closeBonViewer = useCallback(() => {
+    setBonViewerOpen(false);
+    setBonViewerPurchaseId(null);
+    setBonViewerFileName(null);
+  }, []);
+
+  const openStatementBon = useCallback((row: PurchaseHistoryGridRow) => {
+    if (!row.purchaseId || !row.bonOriginalName?.trim()) {
       return;
     }
-    try {
-      const blob = await apiFetchBlob(`/api/purchases/${row.purchaseId}/bon`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = row.bonOriginalName || "bon";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: unknown) {
-      notify(getErrorMessage(e, "Download failed"), "error", 5000);
-    }
-  }, []);
+    openBonViewer(row.purchaseId, row.bonOriginalName.trim());
+  }, [openBonViewer]);
+
+  const reprintMovementReceipt = useCallback(
+    (row: MovementRow) => {
+      if (!statementProduct) {
+        return;
+      }
+      const ok = reprintTransferReceiptFromMovement(row, {
+        sku: statementProduct.sku,
+        name: statementProduct.name,
+      });
+      if (ok) {
+        notify("Transfer receipt downloaded", "success", 2000);
+      }
+    },
+    [statementProduct],
+  );
 
   const submitMovementForProduct = useCallback(async () => {
     if (!movementProduct?.id) {
@@ -637,6 +662,30 @@ export default function ProductsPage() {
                       row.user?.displayName || row.user?.email || ""
                     }
                   />
+                  <Column
+                    type="buttons"
+                    caption="Receipt"
+                    width={56}
+                    allowResizing={false}
+                    allowFiltering={false}
+                    allowHeaderFiltering={false}
+                  >
+                    <ColumnButton
+                      hint="Reprint transfer receipt"
+                      icon="print"
+                      visible={(e) =>
+                        canReprintTransferReceipt(
+                          (e.row?.data as MovementRow | undefined)?.type ?? "",
+                        )
+                      }
+                      onClick={(e) => {
+                        const row = e.row?.data as MovementRow | undefined;
+                        if (row) {
+                          reprintMovementReceipt(row);
+                        }
+                      }}
+                    />
+                  </Column>
                   <Paging defaultPageSize={25} />
                   <Pager showPageSizeSelector showInfo />
                 </AppDataGrid>
@@ -688,7 +737,7 @@ export default function ProductsPage() {
                   />
                   <Column
                     dataField="bonOriginalName"
-                    caption="Bon (click to download)"
+                    caption="Bon (click to view)"
                     width={220}
                     cellRender={(cell) => {
                       const row = cell.data as PurchaseHistoryGridRow | undefined;
@@ -713,7 +762,7 @@ export default function ProductsPage() {
                           onClick={(ev) => {
                             ev.preventDefault();
                             ev.stopPropagation();
-                            void downloadStatementBon(row);
+                            openStatementBon(row);
                           }}
                         >
                           {name}
@@ -736,7 +785,8 @@ export default function ProductsPage() {
     statementPurchases,
     statementLoading,
     statementError,
-    downloadStatementBon,
+    openStatementBon,
+    reprintMovementReceipt,
   ]);
 
   return (
@@ -1043,6 +1093,13 @@ export default function ProductsPage() {
         wrapperAttr={{ class: "product-statement-popup-shell" }}
         showCloseButton
         contentRender={renderStatementPopupContent}
+      />
+
+      <BonViewerPopup
+        visible={bonViewerOpen}
+        purchaseId={bonViewerPurchaseId}
+        fileName={bonViewerFileName}
+        onClose={closeBonViewer}
       />
     </div>
     </PageReadGuard>

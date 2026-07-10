@@ -389,6 +389,25 @@ router.get("/", requirePermission("purchases", "read"), async (_req, res) => {
   res.json(rows.map(purchaseListItem));
 });
 
+function bonContentType(filename: string): string {
+  const ext = path.extname(filename).toLowerCase();
+  switch (ext) {
+    case ".pdf":
+      return "application/pdf";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".png":
+      return "image/png";
+    case ".webp":
+      return "image/webp";
+    case ".gif":
+      return "image/gif";
+    default:
+      return "application/octet-stream";
+  }
+}
+
 router.get("/:id/bon", requirePermission("purchases", "read"), async (req, res) => {
   const row = await prisma.purchase.findUnique({
     where: { id: req.params.id },
@@ -403,9 +422,11 @@ router.get("/:id/bon", requirePermission("purchases", "read"), async (req, res) 
     res.status(404).json({ error: "Bon file missing on server" });
     return;
   }
+  const inline = req.query.inline === "1" || req.query.inline === "true";
+  res.setHeader("Content-Type", bonContentType(row.bonOriginalName));
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="${encodeURIComponent(row.bonOriginalName)}"`,
+    `${inline ? "inline" : "attachment"}; filename="${encodeURIComponent(row.bonOriginalName)}"`,
   );
   res.sendFile(abs);
 });

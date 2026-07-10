@@ -17,6 +17,7 @@ import TextArea from "devextreme-react/text-area";
 import NumberBox from "devextreme-react/number-box";
 import notify from "devextreme/ui/notify";
 import { AppDataGrid } from "../components/app-data-grid";
+import { BonViewerPopup } from "../components/bon-viewer-popup";
 import { PageReadGuard } from "../components/require-page-access";
 import { usePagePermissions } from "../hooks/use-permissions";
 import {
@@ -28,7 +29,7 @@ import {
   type CompanyOpt,
   type SiteOpt,
 } from "../components/purchase-quick-add-popups";
-import { apiFetch, apiFetchBlob } from "../api/client";
+import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
 
 type PersonnelRow = {
@@ -343,6 +344,9 @@ export default function PurchasesPage() {
   const [existingBonName, setExistingBonName] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const gridRef = useRef<DataGridRef>(null);
+  const [bonViewerOpen, setBonViewerOpen] = useState(false);
+  const [bonViewerPurchaseId, setBonViewerPurchaseId] = useState<string | null>(null);
+  const [bonViewerFileName, setBonViewerFileName] = useState<string | null>(null);
   /** Status when the edit form was opened (used for cancel-complete PATCH rules). */
   const [statusWhenLoaded, setStatusWhenLoaded] = useState<
     "PENDING" | "COMPLETE" | "CANCELLED" | null
@@ -873,19 +877,28 @@ export default function PurchasesPage() {
     [reloadGrid],
   );
 
-  const downloadBon = useCallback(async (row: PurchaseListRow) => {
-    try {
-      const blob = await apiFetchBlob(`/api/purchases/${row.id}/bon`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = row.bonOriginalName || "bon";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: unknown) {
-      notify(getErrorMessage(e, "Download failed"), "error", 5000);
-    }
+  const openBonViewer = useCallback((purchaseId: string, fileName: string) => {
+    setBonViewerPurchaseId(purchaseId);
+    setBonViewerFileName(fileName);
+    setBonViewerOpen(true);
   }, []);
+
+  const closeBonViewer = useCallback(() => {
+    setBonViewerOpen(false);
+    setBonViewerPurchaseId(null);
+    setBonViewerFileName(null);
+  }, []);
+
+  const viewPurchaseBon = useCallback(
+    (row: PurchaseListRow) => {
+      if (!row.bonOriginalName?.trim()) {
+        notify("No receipt file on this purchase", "warning", 2500);
+        return;
+      }
+      openBonViewer(row.id, row.bonOriginalName.trim());
+    },
+    [openBonViewer],
+  );
 
   const formDisabled = isAlreadyCancelled;
 
@@ -995,12 +1008,12 @@ export default function PurchasesPage() {
               }}
             />
             <ColumnButton
-              hint="Download bon"
-              icon="download"
+              hint="View bon"
+              icon="doc"
               onClick={(e) => {
                 const row = e.row?.data as PurchaseListRow | undefined;
                 if (row) {
-                  void downloadBon(row);
+                  viewPurchaseBon(row);
                 }
               }}
             />
@@ -1127,6 +1140,15 @@ export default function PurchasesPage() {
               {isEdit && existingBonName ? (
                 <div className="purchase-form__bon-meta">
                   <strong>On file:</strong> {existingBonName}
+                  {editingId ? (
+                    <Button
+                      text="View"
+                      icon="doc"
+                      stylingMode="text"
+                      style={{ marginLeft: 8 }}
+                      onClick={() => openBonViewer(editingId, existingBonName)}
+                    />
+                  ) : null}
                 </div>
               ) : null}
               <div className="purchase-form__bon-actions">
@@ -1458,6 +1480,13 @@ export default function PurchasesPage() {
           quickSiteLineRef.current = null;
           setQuickSiteOpen(true);
         }}
+      />
+
+      <BonViewerPopup
+        visible={bonViewerOpen}
+        purchaseId={bonViewerPurchaseId}
+        fileName={bonViewerFileName}
+        onClose={closeBonViewer}
       />
     </div>
     </PageReadGuard>
