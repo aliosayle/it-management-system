@@ -4,6 +4,8 @@ import { MovementType, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { movementJson } from "../lib/movement-format.js";
 import { applyStockMovementInTransaction } from "../lib/warehouse-inbound.js";
+import { isOutboundMovement } from "../lib/movement-kinds.js";
+import { transferReceiptJson } from "../lib/transfer-receipt-format.js";
 import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -41,10 +43,28 @@ router.post("/movements", requirePermission("stock", "add"), async (req, res) =>
       }),
     );
 
-    res.status(201).json({
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { sku: true, name: true },
+    });
+
+    const payload = {
       ...movementJson(row),
       user: row.user,
-    });
+    };
+
+    if (isOutboundMovement(type) && product) {
+      Object.assign(payload, {
+        transferReceipt: transferReceiptJson({
+          movement: row,
+          product,
+          issuedBy: row.user,
+          destination: note?.trim() || "General issue / external",
+        }),
+      });
+    }
+
+    res.status(201).json(payload);
   } catch (e: unknown) {
     const err = e as { code?: string; message?: string };
     if (err.code === "NOT_FOUND") {

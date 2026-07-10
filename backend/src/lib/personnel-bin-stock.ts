@@ -15,10 +15,17 @@ export async function applyBinQuantityChange(
     userId: string;
     movementNote: string | null;
   },
-): Promise<void> {
+): Promise<{
+  id: string;
+  type: MovementType;
+  quantity: Prisma.Decimal;
+  balanceAfter: Prisma.Decimal;
+  createdAt: Date;
+  note: string | null;
+} | null> {
   const delta = opts.newBinQuantity.minus(opts.oldBinQuantity);
   if (delta.equals(new Prisma.Decimal(0))) {
-    return;
+    return null;
   }
 
   const product = await tx.product.findUnique({ where: { id: opts.productId } });
@@ -49,7 +56,7 @@ export async function applyBinQuantityChange(
     data: { quantityOnHand: newBalance },
   });
 
-  await tx.stockMovement.create({
+  return tx.stockMovement.create({
     data: {
       productId: opts.productId,
       userId: opts.userId,
@@ -57,6 +64,14 @@ export async function applyBinQuantityChange(
       quantity: moveQty,
       balanceAfter: newBalance,
       note: opts.movementNote ?? undefined,
+    },
+    select: {
+      id: true,
+      type: true,
+      quantity: true,
+      balanceAfter: true,
+      createdAt: true,
+      note: true,
     },
   });
 }

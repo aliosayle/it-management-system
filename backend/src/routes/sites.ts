@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { applyBinQuantityChange } from "../lib/personnel-bin-stock.js";
+import { attachOutboundTransferReceipt } from "../lib/transfer-receipt-format.js";
 import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -134,7 +135,7 @@ router.post("/:id/bin/items", requirePermission("sites", "add"), async (req, res
   const newQty = new Prisma.Decimal(quantity);
 
   try {
-    const row = await prisma.$transaction(async (tx) => {
+    const { row, movement, site } = await prisma.$transaction(async (tx) => {
       const site = await tx.site.findUnique({
         where: { id: siteId },
         select: { id: true, name: true, company: { select: { name: true } } },
@@ -152,7 +153,7 @@ router.post("/:id/bin/items", requirePermission("sites", "add"), async (req, res
         ? new Prisma.Decimal(existing.quantity.toString())
         : new Prisma.Decimal(0);
 
-      await applyBinQuantityChange(tx, {
+      const movement = await applyBinQuantityChange(tx, {
         productId,
         oldBinQuantity: oldQty,
         newBinQuantity: newQty,
@@ -160,7 +161,7 @@ router.post("/:id/bin/items", requirePermission("sites", "add"), async (req, res
         movementNote: siteBinMovementNote(site, note),
       });
 
-      return tx.siteBinItem.upsert({
+      const row = await tx.siteBinItem.upsert({
         where: {
           siteId_productId: { siteId, productId },
         },
@@ -176,8 +177,21 @@ router.post("/:id/bin/items", requirePermission("sites", "add"), async (req, res
         },
         include: { product: { select: { sku: true, name: true } } },
       });
+      return { row, movement, site };
     });
-    res.status(201).json(siteBinItemJson(row));
+    const actor = await prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { displayName: true, email: true },
+    });
+    const destination = `Site bin — ${site.company.name} / ${site.name}`.trim();
+    const payload = attachOutboundTransferReceipt(
+      siteBinItemJson(row),
+      movement,
+      row.product,
+      actor ?? { displayName: "", email: "" },
+      destination,
+    );
+    res.status(201).json(payload);
   } catch (e: unknown) {
     const err = e as { code?: string; message?: string };
     if (err.code === "SITE_NOT_FOUND") {
@@ -233,7 +247,7 @@ router.patch("/:id/bin/items/:itemId", requirePermission("sites", "edit"), async
   }
 
   try {
-    const row = await prisma.$transaction(async (tx) => {
+    const { row, movement, site } = await prisma.$transaction(async (tx) => {
       const site = await tx.site.findUnique({
         where: { id: siteId },
         select: { name: true, company: { select: { name: true } } },
@@ -244,7 +258,7 @@ router.patch("/:id/bin/items/:itemId", requirePermission("sites", "edit"), async
 
       const noteForMovement =
         parsed.data.note !== undefined ? parsed.data.note : existing.note;
-      await applyBinQuantityChange(tx, {
+      const movement = await applyBinQuantityChange(tx, {
         productId: existing.productId,
         oldBinQuantity: oldQty,
         newBinQuantity: newQty,
@@ -252,13 +266,26 @@ router.patch("/:id/bin/items/:itemId", requirePermission("sites", "edit"), async
         movementNote: siteBinMovementNote(site, noteForMovement),
       });
 
-      return tx.siteBinItem.update({
+      const row = await tx.siteBinItem.update({
         where: { id: itemId },
         data,
         include: { product: { select: { sku: true, name: true } } },
       });
+      return { row, movement, site };
     });
-    res.json(siteBinItemJson(row));
+    const actor = await prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { displayName: true, email: true },
+    });
+    const destination = `Site bin — ${site.company.name} / ${site.name}`.trim();
+    const payload = attachOutboundTransferReceipt(
+      siteBinItemJson(row),
+      movement,
+      row.product,
+      actor ?? { displayName: "", email: "" },
+      destination,
+    );
+    res.json(payload);
   } catch (e: unknown) {
     const err = e as { code?: string };
     if (err.code === "SITE_NOT_FOUND") {

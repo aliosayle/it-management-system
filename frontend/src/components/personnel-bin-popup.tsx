@@ -15,6 +15,7 @@ import { AppDataGrid } from "./app-data-grid";
 import { usePagePermissions } from "../hooks/use-permissions";
 import { apiFetch } from "../api/client";
 import { getDataGridErrorMessage } from "../utils/error-message";
+import { maybeDownloadTransferReceipt } from "../utils/transfer-receipt-pdf";
 
 export type ProductOption = { id: string; sku: string; name: string; label: string };
 
@@ -44,24 +45,29 @@ export function PersonnelBinPopup({
         apiFetch(`/api/personnel/${personnelId}/bin/items`) as Promise<
           Record<string, unknown>[]
         >,
-      insert: (values) =>
-        apiFetch(`/api/personnel/${personnelId}/bin/items`, {
+      insert: async (values) => {
+        const created = (await apiFetch(`/api/personnel/${personnelId}/bin/items`, {
           method: "POST",
           body: JSON.stringify({
             productId: (values as { productId: string }).productId,
             quantity: (values as { quantity: number }).quantity,
             note: (values as { note?: string | null }).note ?? null,
           }),
-        }) as Promise<Record<string, unknown>>,
-      update: (key, values) => {
+        })) as Record<string, unknown>;
+        maybeDownloadTransferReceipt(created);
+        return created;
+      },
+      update: async (key, values) => {
         const payload = values as { quantity?: number; note?: string | null };
-        return apiFetch(`/api/personnel/${personnelId}/bin/items/${key}`, {
+        const updated = (await apiFetch(`/api/personnel/${personnelId}/bin/items/${key}`, {
           method: "PATCH",
           body: JSON.stringify({
             quantity: payload.quantity,
             note: payload.note ?? null,
           }),
-        }) as Promise<Record<string, unknown>>;
+        })) as Record<string, unknown>;
+        maybeDownloadTransferReceipt(updated);
+        return updated;
       },
       remove: (key) =>
         apiFetch(`/api/personnel/${personnelId}/bin/items/${key}`, {

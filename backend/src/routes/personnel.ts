@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { applyBinQuantityChange } from "../lib/personnel-bin-stock.js";
+import { attachOutboundTransferReceipt } from "../lib/transfer-receipt-format.js";
 import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -213,7 +214,7 @@ router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req,
   const { productId, quantity, addQuantity, note } = parsed.data;
 
   try {
-    const row = await prisma.$transaction(async (tx) => {
+    const { row, movement, personnel } = await prisma.$transaction(async (tx) => {
       const personnel = await tx.personnel.findUnique({
         where: { id: personnelId },
         select: { id: true, firstName: true, lastName: true },
@@ -236,7 +237,7 @@ router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req,
           ? oldQty.plus(new Prisma.Decimal(addQuantity))
           : new Prisma.Decimal(quantity!);
 
-      await applyBinQuantityChange(tx, {
+      const movement = await applyBinQuantityChange(tx, {
         productId,
         oldBinQuantity: oldQty,
         newBinQuantity: newQty,
@@ -247,7 +248,7 @@ router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req,
       const noteForRow =
         note !== undefined && note !== null ? note : existing?.note ?? undefined;
 
-      return tx.personnelBinItem.upsert({
+      const row = await tx.personnelBinItem.upsert({
         where: {
           personnelId_productId: { personnelId, productId },
         },
@@ -263,8 +264,21 @@ router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req,
         },
         include: { product: { select: { sku: true, name: true } } },
       });
+      return { row, movement, personnel };
     });
-    res.status(201).json(binItemJson(row));
+    const actor = await prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { displayName: true, email: true },
+    });
+    const destination = `Personal bin — ${personnel.firstName} ${personnel.lastName}`.trim();
+    const payload = attachOutboundTransferReceipt(
+      binItemJson(row),
+      movement,
+      row.product,
+      actor ?? { displayName: "", email: "" },
+      destination,
+    );
+    res.status(201).json(payload);
   } catch (e: unknown) {
     const err = e as { code?: string; message?: string };
     if (err.code === "PERSONNEL_NOT_FOUND") {
@@ -320,7 +334,7 @@ router.patch("/:id/bin/items/:itemId", requirePermission("personnel", "edit"), a
   }
 
   try {
-    const row = await prisma.$transaction(async (tx) => {
+    const { row, movement, personnel } = await prisma.$transaction(async (tx) => {
       const personnel = await tx.personnel.findUnique({
         where: { id: personnelId },
         select: { firstName: true, lastName: true },
@@ -331,7 +345,7 @@ router.patch("/:id/bin/items/:itemId", requirePermission("personnel", "edit"), a
 
       const noteForMovement =
         parsed.data.note !== undefined ? parsed.data.note : existing.note;
-      await applyBinQuantityChange(tx, {
+      const movement = await applyBinQuantityChange(tx, {
         productId: existing.productId,
         oldBinQuantity: oldQty,
         newBinQuantity: newQty,
@@ -339,13 +353,26 @@ router.patch("/:id/bin/items/:itemId", requirePermission("personnel", "edit"), a
         movementNote: binMovementNote(personnel, noteForMovement),
       });
 
-      return tx.personnelBinItem.update({
+      const row = await tx.personnelBinItem.update({
         where: { id: itemId },
         data,
         include: { product: { select: { sku: true, name: true } } },
       });
+      return { row, movement, personnel };
     });
-    res.json(binItemJson(row));
+    const actor = await prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { displayName: true, email: true },
+    });
+    const destination = `Personal bin — ${personnel.firstName} ${personnel.lastName}`.trim();
+    const payload = attachOutboundTransferReceipt(
+      binItemJson(row),
+      movement,
+      row.product,
+      actor ?? { displayName: "", email: "" },
+      destination,
+    );
+    res.json(payload);
   } catch (e: unknown) {
     const err = e as { code?: string };
     if (err.code === "PERSONNEL_NOT_FOUND") {

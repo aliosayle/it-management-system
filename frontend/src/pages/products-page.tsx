@@ -28,6 +28,10 @@ import { usePagePermissions } from "../hooks/use-permissions";
 import { StockMovementProductSummary } from "../components/stock-movement-product-summary";
 import { apiFetch, apiFetchBlob } from "../api/client";
 import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message";
+import {
+  maybeDownloadTransferReceipt,
+  type TransferReceipt,
+} from "../utils/transfer-receipt-pdf";
 import type { ProductOption } from "../components/personnel-bin-popup";
 import {
   MOVEMENT_TYPE_OPTIONS,
@@ -404,7 +408,7 @@ export default function ProductsPage() {
       const productId = movementProduct.id;
       const reloadStatementForProduct =
         statementOpen && statementProduct?.id === productId ? productId : null;
-      await apiFetch("/api/stock/movements", {
+      const created = (await apiFetch("/api/stock/movements", {
         method: "POST",
         body: JSON.stringify({
           productId,
@@ -412,8 +416,14 @@ export default function ProductsPage() {
           quantity: movementForm.quantity,
           note: movementForm.note.trim() || null,
         }),
-      });
-      notify("Movement saved", "success", 2000);
+      })) as { transferReceipt?: TransferReceipt | null };
+      const hadReceipt = Boolean(created.transferReceipt);
+      maybeDownloadTransferReceipt(created);
+      notify(
+        hadReceipt ? "Movement saved — transfer receipt downloaded" : "Movement saved",
+        "success",
+        hadReceipt ? 2500 : 2000,
+      );
       setMovementOpen(false);
       setMovementProduct(null);
       setMovementForm({ type: null, quantity: 1, note: "" });
@@ -437,15 +447,23 @@ export default function ProductsPage() {
       return;
     }
     try {
-      await apiFetch(`/api/personnel/${personnelId}/bin/items`, {
+      const created = (await apiFetch(`/api/personnel/${personnelId}/bin/items`, {
         method: "POST",
         body: JSON.stringify({
           productId,
           addQuantity: quantity,
           note: note.trim() || null,
         }),
-      });
-      notify("Issued from warehouse to personal bin", "success", 2000);
+      })) as { transferReceipt?: TransferReceipt | null };
+      const hadReceipt = Boolean(created.transferReceipt);
+      maybeDownloadTransferReceipt(created);
+      notify(
+        hadReceipt
+          ? "Issued from warehouse to personal bin — receipt downloaded"
+          : "Issued from warehouse to personal bin",
+        "success",
+        hadReceipt ? 2500 : 2000,
+      );
       setAssignOpen(false);
       const grid = gridRef.current?.instance();
       if (grid) {

@@ -16,6 +16,7 @@
     "devextreme-exceljs-fork": "^4.4.9",
     "devextreme-react": "25.2.5",
     "file-saver": "^2.0.5",
+    "jspdf": "^4.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^6.3.0",
