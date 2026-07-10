@@ -4,6 +4,8 @@ import {
   MovementType,
   Prisma,
 } from "@prisma/client";
+import { subtractFromPersonnelBinWithoutStock } from "./personnel-bin-direct.js";
+import { subtractFromSiteBinWithoutStock } from "./site-bin-direct.js";
 import { applyBinQuantityChange } from "./personnel-bin-stock.js";
 import { applyStockMovementInTransaction } from "./warehouse-inbound.js";
 
@@ -24,6 +26,16 @@ export type CreateDeliveryInput = {
   departmentId?: string | null;
   notes?: string | null;
   lines: DeliveryLineInput[];
+};
+
+export type DeliverySnapshot = {
+  id: string;
+  destination: DeliveryDestination;
+  targetPersonnelId: string | null;
+  targetSiteId: string | null;
+  departmentId: string | null;
+  notes: string | null;
+  lines: Array<{ productId: string; quantity: Prisma.Decimal }>;
 };
 
 function personnelBinNote(
@@ -58,12 +70,8 @@ function generalIssueNote(docNotes?: string | null) {
   return parts.length ? parts.join(" · ") : "General issue";
 }
 
-export async function applyDeliveryInTransaction(
-  tx: Tx,
-  userId: string,
-  input: CreateDeliveryInput,
-) {
-  const { destination, targetPersonnelId, targetSiteId, departmentId, notes, lines } = input;
+function validateDestination(input: CreateDeliveryInput) {
+  const { destination, targetPersonnelId, targetSiteId, departmentId, lines } = input;
 
   if (!lines.length) {
     throw Object.assign(new Error("At least one line is required"), { code: "NO_LINES" });
@@ -82,6 +90,10 @@ export async function applyDeliveryInTransaction(
       throw Object.assign(new Error("departmentId is required"), { code: "BAD_DEST" });
     }
   }
+}
+
+async function resolveDestinationEntities(tx: Tx, input: CreateDeliveryInput) {
+  const { destination, targetPersonnelId, targetSiteId, departmentId } = input;
 
   let personnel: { id: string; firstName: string; lastName: string } | null = null;
   let site: { id: string; name: string; company: { name: string } } | null = null;
@@ -121,6 +133,10 @@ export async function applyDeliveryInTransaction(
     }
   }
 
+  return { personnel, site, department };
+}
+
+async function validateStockForLines(tx: Tx, lines: DeliveryLineInput[]) {
   const productIds = [...new Set(lines.map((l) => l.productId))];
   const products = await tx.product.findMany({
     where: { id: { in: productIds } },
@@ -147,17 +163,23 @@ export async function applyDeliveryInTransaction(
     }
     stockByProduct.set(line.productId, onHand.minus(qty));
   }
+}
 
-  const delivery = await tx.delivery.create({
-    data: {
-      destination,
-      targetPersonnelId: targetPersonnelId ?? undefined,
-      targetSiteId: targetSiteId ?? undefined,
-      departmentId: departmentId ?? undefined,
-      notes: notes?.trim() || undefined,
-      createdByUserId: userId,
-    },
-  });
+async function fulfillDeliveryLines(
+  tx: Tx,
+  userId: string,
+  delivery: {
+    id: string;
+    destination: DeliveryDestination;
+    targetPersonnelId: string | null;
+    targetSiteId: string | null;
+    notes: string | null;
+  },
+  input: CreateDeliveryInput,
+  entities: Awaited<ReturnType<typeof resolveDestinationEntities>>,
+) {
+  const { destination, targetPersonnelId, targetSiteId, notes, lines } = input;
+  const { personnel, site, department } = entities;
 
   const movementNote =
     destination === DeliveryDestination.PERSONNEL_BIN
@@ -265,6 +287,188 @@ export async function applyDeliveryInTransaction(
       });
     }
   }
+}
+
+/** Undo warehouse/bin effects of a delivery and remove its stock movements. */
+export async function reverseDeliveryInTransaction(
+  tx: Tx,
+  userId: string,
+  delivery: DeliverySnapshot,
+): Promise<void> {
+  const movements = await tx.stockMovement.findMany({
+    where: { deliveryId: delivery.id },
+  });
+
+  for (const m of movements) {
+    const qty = new Prisma.Decimal(m.quantity.toString());
+    if (m.type === MovementType.OUT) {
+      await applyStockMovementInTransaction(tx, {
+        productId: m.productId,
+        userId,
+        type: MovementType.IN,
+        quantity: qty,
+        note: `Reversal: delivery ${delivery.id}`,
+        deliveryId: null,
+      });
+    } else if (m.type === MovementType.IN) {
+      await applyStockMovementInTransaction(tx, {
+        productId: m.productId,
+        userId,
+        type: MovementType.OUT,
+        quantity: qty,
+        note: `Reversal: delivery ${delivery.id}`,
+        deliveryId: null,
+      });
+    }
+  }
+
+  await tx.stockMovement.deleteMany({ where: { deliveryId: delivery.id } });
+
+  if (
+    delivery.destination === DeliveryDestination.PERSONNEL_BIN &&
+    delivery.targetPersonnelId
+  ) {
+    for (const line of delivery.lines) {
+      await subtractFromPersonnelBinWithoutStock(tx, {
+        personnelId: delivery.targetPersonnelId,
+        productId: line.productId,
+        subQty: new Prisma.Decimal(line.quantity.toString()),
+      });
+    }
+  } else if (delivery.destination === DeliveryDestination.SITE_BIN && delivery.targetSiteId) {
+    for (const line of delivery.lines) {
+      await subtractFromSiteBinWithoutStock(tx, {
+        siteId: delivery.targetSiteId,
+        productId: line.productId,
+        subQty: new Prisma.Decimal(line.quantity.toString()),
+      });
+    }
+  }
+}
+
+export async function applyDeliveryInTransaction(
+  tx: Tx,
+  userId: string,
+  input: CreateDeliveryInput,
+) {
+  validateDestination(input);
+  const entities = await resolveDestinationEntities(tx, input);
+  await validateStockForLines(tx, input.lines);
+
+  const delivery = await tx.delivery.create({
+    data: {
+      destination: input.destination,
+      targetPersonnelId: input.targetPersonnelId ?? undefined,
+      targetSiteId: input.targetSiteId ?? undefined,
+      departmentId: input.departmentId ?? undefined,
+      notes: input.notes?.trim() || undefined,
+      createdByUserId: userId,
+    },
+  });
+
+  await fulfillDeliveryLines(
+    tx,
+    userId,
+    {
+      id: delivery.id,
+      destination: input.destination,
+      targetPersonnelId: input.targetPersonnelId ?? null,
+      targetSiteId: input.targetSiteId ?? null,
+      notes: input.notes ?? null,
+    },
+    input,
+    entities,
+  );
 
   return delivery;
+}
+
+export async function updateDeliveryInTransaction(
+  tx: Tx,
+  userId: string,
+  deliveryId: string,
+  input: CreateDeliveryInput,
+) {
+  const existing = await tx.delivery.findUnique({
+    where: { id: deliveryId },
+    include: { lines: true },
+  });
+  if (!existing) {
+    throw Object.assign(new Error("Delivery not found"), { code: "NOT_FOUND" });
+  }
+
+  validateDestination(input);
+  const entities = await resolveDestinationEntities(tx, input);
+
+  await reverseDeliveryInTransaction(tx, userId, {
+    id: existing.id,
+    destination: existing.destination,
+    targetPersonnelId: existing.targetPersonnelId,
+    targetSiteId: existing.targetSiteId,
+    departmentId: existing.departmentId,
+    notes: existing.notes,
+    lines: existing.lines.map((l) => ({
+      productId: l.productId,
+      quantity: l.quantity,
+    })),
+  });
+
+  await validateStockForLines(tx, input.lines);
+
+  await tx.deliveryLine.deleteMany({ where: { deliveryId } });
+  await tx.delivery.update({
+    where: { id: deliveryId },
+    data: {
+      destination: input.destination,
+      targetPersonnelId: input.targetPersonnelId ?? null,
+      targetSiteId: input.targetSiteId ?? null,
+      departmentId: input.departmentId ?? null,
+      notes: input.notes?.trim() || null,
+    },
+  });
+
+  await fulfillDeliveryLines(
+    tx,
+    userId,
+    {
+      id: deliveryId,
+      destination: input.destination,
+      targetPersonnelId: input.targetPersonnelId ?? null,
+      targetSiteId: input.targetSiteId ?? null,
+      notes: input.notes ?? null,
+    },
+    input,
+    entities,
+  );
+
+  return existing;
+}
+
+export async function deleteDeliveryInTransaction(
+  tx: Tx,
+  userId: string,
+  deliveryId: string,
+): Promise<void> {
+  const existing = await tx.delivery.findUnique({
+    where: { id: deliveryId },
+    include: { lines: true },
+  });
+  if (!existing) {
+    throw Object.assign(new Error("Delivery not found"), { code: "NOT_FOUND" });
+  }
+
+  await reverseDeliveryInTransaction(tx, userId, {
+    id: existing.id,
+    destination: existing.destination,
+    targetPersonnelId: existing.targetPersonnelId,
+    targetSiteId: existing.targetSiteId,
+    departmentId: existing.departmentId,
+    notes: existing.notes,
+    lines: existing.lines.map((l) => ({
+      productId: l.productId,
+      quantity: l.quantity,
+    })),
+  });
+
+  await tx.delivery.delete({ where: { id: deliveryId } });
 }

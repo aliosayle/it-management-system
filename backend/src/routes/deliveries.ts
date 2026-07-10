@@ -7,7 +7,11 @@ import {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { applyDeliveryInTransaction } from "../lib/apply-delivery.js";
+import {
+  applyDeliveryInTransaction,
+  deleteDeliveryInTransaction,
+  updateDeliveryInTransaction,
+} from "../lib/apply-delivery.js";
 import { requirePermission } from "../lib/permissions.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -146,6 +150,78 @@ type DeliveryDetailRow = Prisma.DeliveryGetPayload<{
   };
 }>;
 
+function deliveryDetailInclude() {
+  return {
+    targetPersonnel: { select: { firstName: true, lastName: true } },
+    targetSite: { include: { company: { select: { name: true } } } },
+    department: {
+      select: {
+        name: true,
+        site: { select: { name: true, company: { select: { name: true } } } },
+      },
+    },
+    createdBy: { select: { id: true, displayName: true, email: true } },
+    lines: {
+      orderBy: { lineIndex: "asc" as const },
+      include: { product: { select: { sku: true, name: true } } },
+    },
+  };
+}
+
+async function loadDeliveryDetail(id: string) {
+  return prisma.delivery.findUnique({
+    where: { id },
+    include: deliveryDetailInclude(),
+  });
+}
+
+function mapDeliveryInput(body: z.infer<typeof createSchema>) {
+  return {
+    destination: body.destination as DeliveryDestination,
+    targetPersonnelId: body.targetPersonnelId ?? null,
+    targetSiteId: body.targetSiteId ?? null,
+    departmentId: body.departmentId ?? null,
+    notes: body.notes ?? null,
+    lines: body.lines.map((l, i) => ({
+      productId: l.productId,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      priceSource: l.priceSource as DeliveryPriceSource,
+      lineIndex: l.lineIndex ?? i,
+    })),
+  };
+}
+
+function handleDeliveryMutationError(e: unknown, res: import("express").Response): boolean {
+  const err = e as { code?: string; message?: string };
+  if (err.code === "NOT_FOUND") {
+    res.status(404).json({ error: err.message ?? "Not found" });
+    return true;
+  }
+  if (err.code === "INSUFFICIENT") {
+    res.status(400).json({ error: "Insufficient stock for one or more lines" });
+    return true;
+  }
+  if (err.code === "INSUFFICIENT_BIN") {
+    res.status(409).json({
+      error:
+        err.message ??
+        "Cannot delete or update: insufficient quantity in destination bin to reverse this delivery",
+    });
+    return true;
+  }
+  if (
+    err.code === "BAD_DEST" ||
+    err.code === "BAD_QTY" ||
+    err.code === "BAD_PRICE" ||
+    err.code === "NO_LINES"
+  ) {
+    res.status(400).json({ error: err.message ?? "Invalid request" });
+    return true;
+  }
+  return false;
+}
+
 function deliveryListJson(row: DeliveryListRow) {
   const grandTotal = row.lines.reduce((sum, l) => sum + Number(l.lineTotal), 0);
   return {
@@ -265,24 +341,7 @@ router.get("/", requirePermission("deliveries", "read"), async (_req, res) => {
 
 router.get("/:id", requirePermission("deliveries", "read"), async (req, res) => {
   const id = String(req.params.id);
-  const row = await prisma.delivery.findUnique({
-    where: { id },
-    include: {
-      targetPersonnel: { select: { firstName: true, lastName: true } },
-      targetSite: { include: { company: { select: { name: true } } } },
-      department: {
-        select: {
-          name: true,
-          site: { select: { name: true, company: { select: { name: true } } } },
-        },
-      },
-      createdBy: { select: { id: true, displayName: true, email: true } },
-      lines: {
-        orderBy: { lineIndex: "asc" },
-        include: { product: { select: { sku: true, name: true } } },
-      },
-    },
-  });
+  const row = await loadDeliveryDetail(id);
   if (!row) {
     res.status(404).json({ error: "Not found" });
     return;
@@ -302,56 +361,52 @@ router.post("/", requirePermission("deliveries", "add"), async (req, res) => {
 
   try {
     const delivery = await prisma.$transaction(async (tx) =>
-      applyDeliveryInTransaction(tx, userId, {
-        destination: body.destination as DeliveryDestination,
-        targetPersonnelId: body.targetPersonnelId ?? null,
-        targetSiteId: body.targetSiteId ?? null,
-        departmentId: body.departmentId ?? null,
-        notes: body.notes ?? null,
-        lines: body.lines.map((l, i) => ({
-          productId: l.productId,
-          quantity: l.quantity,
-          unitPrice: l.unitPrice,
-          priceSource: l.priceSource as DeliveryPriceSource,
-          lineIndex: l.lineIndex ?? i,
-        })),
-      }),
+      applyDeliveryInTransaction(tx, userId, mapDeliveryInput(body)),
     );
 
-    const detail = await prisma.delivery.findUnique({
-      where: { id: delivery.id },
-      include: {
-        targetPersonnel: { select: { firstName: true, lastName: true } },
-        targetSite: { include: { company: { select: { name: true } } } },
-        department: {
-          select: {
-            name: true,
-            site: { select: { name: true, company: { select: { name: true } } } },
-          },
-        },
-        createdBy: { select: { id: true, displayName: true, email: true } },
-        lines: {
-          orderBy: { lineIndex: "asc" },
-          include: { product: { select: { sku: true, name: true } } },
-        },
-      },
-    });
-
+    const detail = await loadDeliveryDetail(delivery.id);
     res.status(201).json(deliveryDetailJson(detail!));
   } catch (e: unknown) {
-    const err = e as { code?: string; message?: string };
-    if (err.code === "NOT_FOUND") {
-      res.status(404).json({ error: err.message ?? "Not found" });
+    if (handleDeliveryMutationError(e, res)) return;
+    throw e;
+  }
+});
+
+router.patch("/:id", requirePermission("deliveries", "edit"), async (req, res) => {
+  const parsed = createSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const id = String(req.params.id);
+  const userId = req.user!.sub;
+
+  try {
+    await prisma.$transaction(async (tx) =>
+      updateDeliveryInTransaction(tx, userId, id, mapDeliveryInput(parsed.data)),
+    );
+    const detail = await loadDeliveryDetail(id);
+    if (!detail) {
+      res.status(404).json({ error: "Not found" });
       return;
     }
-    if (err.code === "INSUFFICIENT") {
-      res.status(400).json({ error: "Insufficient stock for one or more lines" });
-      return;
-    }
-    if (err.code === "BAD_DEST" || err.code === "BAD_QTY" || err.code === "BAD_PRICE" || err.code === "NO_LINES") {
-      res.status(400).json({ error: err.message ?? "Invalid request" });
-      return;
-    }
+    res.json(deliveryDetailJson(detail));
+  } catch (e: unknown) {
+    if (handleDeliveryMutationError(e, res)) return;
+    throw e;
+  }
+});
+
+router.delete("/:id", requirePermission("deliveries", "delete"), async (req, res) => {
+  const id = String(req.params.id);
+  const userId = req.user!.sub;
+
+  try {
+    await prisma.$transaction(async (tx) => deleteDeliveryInTransaction(tx, userId, id));
+    res.status(204).send();
+  } catch (e: unknown) {
+    if (handleDeliveryMutationError(e, res)) return;
     throw e;
   }
 });

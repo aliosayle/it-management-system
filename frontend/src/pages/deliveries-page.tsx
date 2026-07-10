@@ -64,6 +64,9 @@ type DeliveryDetail = {
   id: string;
   destination: string;
   destinationSummary: string;
+  targetPersonnelId: string | null;
+  targetSiteId: string | null;
+  departmentId: string | null;
   notes: string | null;
   createdAt: string;
   grandTotal: number;
@@ -193,10 +196,12 @@ function renderDeliveryLinesDetail(detail: { data?: DeliveryListRow } | Delivery
 }
 
 export default function DeliveriesPage() {
-  const { canAdd } = usePagePermissions("deliveries");
+  const { canAdd, canEdit, canDelete } = usePagePermissions("deliveries");
   const gridRef = useRef<DataGridRef>(null);
 
   const [popupOpen, setPopupOpen] = useState(false);
+  const [viewMode, setViewMode] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [destination, setDestination] = useState<(typeof DEST_OPTIONS)[number]["value"]>("PERSONNEL_BIN");
   const [targetPersonnelId, setTargetPersonnelId] = useState<string | null>(null);
@@ -243,6 +248,8 @@ export default function DeliveriesPage() {
   }, [loadMeta]);
 
   const resetForm = useCallback(() => {
+    setEditingId(null);
+    setViewMode(false);
     setDestination("PERSONNEL_BIN");
     setTargetPersonnelId(null);
     setTargetSiteId(null);
@@ -251,13 +258,64 @@ export default function DeliveriesPage() {
     setLines([emptyLine()]);
   }, []);
 
+  const populateFormFromDetail = useCallback((detail: DeliveryDetail) => {
+    setDestination(detail.destination as (typeof DEST_OPTIONS)[number]["value"]);
+    setTargetPersonnelId(detail.targetPersonnelId ?? null);
+    setTargetSiteId(detail.targetSiteId ?? null);
+    setDepartmentId(detail.departmentId ?? null);
+    setNotes(detail.notes ?? "");
+    setLines(
+      detail.lines.length > 0
+        ? detail.lines.map((l) => ({
+            key: newLineKey(),
+            productId: l.productId,
+            quantity: l.quantity,
+            priceSource: l.priceSource as PriceSource,
+            unitPrice: l.unitPrice,
+          }))
+        : [emptyLine()],
+    );
+  }, []);
+
   const openCreate = useCallback(() => {
     resetForm();
     setPopupOpen(true);
   }, [resetForm]);
 
+  const openEdit = useCallback(
+    async (row: DeliveryListRow) => {
+      try {
+        const detail = (await apiFetch(`/api/deliveries/${row.id}`)) as DeliveryDetail;
+        setEditingId(row.id);
+        setViewMode(false);
+        populateFormFromDetail(detail);
+        setPopupOpen(true);
+      } catch (e: unknown) {
+        notify(getErrorMessage(e, "Failed to load delivery"), "error", 5000);
+      }
+    },
+    [populateFormFromDetail],
+  );
+
+  const openView = useCallback(
+    async (row: DeliveryListRow) => {
+      try {
+        const detail = (await apiFetch(`/api/deliveries/${row.id}`)) as DeliveryDetail;
+        setEditingId(row.id);
+        setViewMode(true);
+        populateFormFromDetail(detail);
+        setPopupOpen(true);
+      } catch (e: unknown) {
+        notify(getErrorMessage(e, "Failed to load delivery"), "error", 5000);
+      }
+    },
+    [populateFormFromDetail],
+  );
+
   const closePopup = useCallback(() => {
     setPopupOpen(false);
+    setEditingId(null);
+    setViewMode(false);
   }, []);
 
   const updateLine = useCallback((key: string, patch: Partial<FormLine>) => {
@@ -305,6 +363,24 @@ export default function DeliveriesPage() {
     }
   }, []);
 
+  const deleteDelivery = useCallback(
+    async (row: DeliveryListRow) => {
+      const ok = window.confirm(
+        "Delete this delivery? Warehouse stock and destination bin quantities will be fully reversed.",
+      );
+      if (!ok) return;
+      try {
+        await apiFetch(`/api/deliveries/${row.id}`, { method: "DELETE" });
+        notify("Delivery deleted", "success", 2000);
+        reloadGrid();
+        void loadMeta();
+      } catch (e: unknown) {
+        notify(getErrorMessage(e, "Failed to delete delivery"), "error", 5000);
+      }
+    },
+    [reloadGrid, loadMeta],
+  );
+
   const submitDelivery = useCallback(async () => {
     if (destination === "PERSONNEL_BIN" && !targetPersonnelId) {
       notify("Select personnel for the personal bin", "warning", 2500);
@@ -346,28 +422,44 @@ export default function DeliveriesPage() {
       }
     }
 
+    if (editingId) {
+      const ok = window.confirm(
+        "Save changes? Stock and bin quantities will be reversed and re-applied for the updated lines.",
+      );
+      if (!ok) return;
+    }
+
     setSubmitting(true);
     try {
-      const detail = (await apiFetch("/api/deliveries", {
-        method: "POST",
-        body: JSON.stringify({
-          destination,
-          targetPersonnelId: destination === "PERSONNEL_BIN" ? targetPersonnelId : null,
-          targetSiteId: destination === "SITE_BIN" ? targetSiteId : null,
-          departmentId: destination === "DEPARTMENT" ? departmentId : null,
-          notes: notes.trim() || null,
-          lines: payloadLines,
-        }),
-      })) as DeliveryDetail;
+      const payload = {
+        destination,
+        targetPersonnelId: destination === "PERSONNEL_BIN" ? targetPersonnelId : null,
+        targetSiteId: destination === "SITE_BIN" ? targetSiteId : null,
+        departmentId: destination === "DEPARTMENT" ? departmentId : null,
+        notes: notes.trim() || null,
+        lines: payloadLines,
+      };
 
-      notify("Delivery recorded", "success", 2000);
-      downloadDeliveryNotePdf(deliveryNoteFromDetail(detail));
+      const detail = editingId
+        ? ((await apiFetch(`/api/deliveries/${editingId}`, {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          })) as DeliveryDetail)
+        : ((await apiFetch("/api/deliveries", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          })) as DeliveryDetail);
+
+      notify(editingId ? "Delivery updated" : "Delivery recorded", "success", 2000);
+      if (!editingId) {
+        downloadDeliveryNotePdf(deliveryNoteFromDetail(detail));
+      }
       closePopup();
       resetForm();
       reloadGrid();
       void loadMeta();
     } catch (e: unknown) {
-      notify(getErrorMessage(e, "Failed to save delivery"), "error", 5000);
+      notify(getErrorMessage(e, editingId ? "Failed to update delivery" : "Failed to save delivery"), "error", 5000);
     } finally {
       setSubmitting(false);
     }
@@ -379,6 +471,7 @@ export default function DeliveriesPage() {
     notes,
     lines,
     productById,
+    editingId,
     closePopup,
     resetForm,
     reloadGrid,
@@ -398,6 +491,10 @@ export default function DeliveriesPage() {
     () => personnel.map((p) => ({ id: p.id, label: `${p.fullName} (${p.siteLabel})` })),
     [personnel],
   );
+
+  const isEdit = Boolean(editingId);
+  const formDisabled = viewMode;
+  const popupTitle = viewMode ? "View delivery" : isEdit ? "Edit delivery" : "New delivery";
 
   return (
     <PageReadGuard resource="deliveries">
@@ -452,17 +549,43 @@ export default function DeliveriesPage() {
             <Column
               type="buttons"
               cssClass="grid-actions-column"
-              width={72}
+              width={148}
               allowResizing={false}
               allowFiltering={false}
               allowHeaderFiltering={false}
             >
+              <ColumnButton
+                hint="View"
+                icon="eyeopen"
+                onClick={(e) => {
+                  const row = e.row?.data as DeliveryListRow | undefined;
+                  if (row) void openView(row);
+                }}
+              />
+              <ColumnButton
+                hint="Edit"
+                icon="edit"
+                disabled={!canEdit}
+                onClick={(e) => {
+                  const row = e.row?.data as DeliveryListRow | undefined;
+                  if (row) void openEdit(row);
+                }}
+              />
               <ColumnButton
                 hint="Reprint bon"
                 icon="print"
                 onClick={(e) => {
                   const row = e.row?.data as DeliveryListRow | undefined;
                   if (row) void reprintDelivery(row);
+                }}
+              />
+              <ColumnButton
+                hint="Delete"
+                icon="trash"
+                disabled={!canDelete}
+                onClick={(e) => {
+                  const row = e.row?.data as DeliveryListRow | undefined;
+                  if (row) void deleteDelivery(row);
                 }}
               />
             </Column>
@@ -475,13 +598,19 @@ export default function DeliveriesPage() {
           visible={popupOpen}
           onHiding={closePopup}
           showTitle
-          title="New delivery"
+          title={popupTitle}
           width={1280}
           height="auto"
           maxHeight="92vh"
           showCloseButton
         >
           <div className="purchase-form">
+            {viewMode ? (
+              <div className="purchase-form__alert" role="status">
+                Read-only view. Use Reprint bon to download the delivery note, or close and choose Edit to
+                change this delivery.
+              </div>
+            ) : null}
             <div className="purchase-form__section-title">Destination</div>
             <div className="purchase-form__grid2">
               <div className="purchase-form__field">
@@ -501,6 +630,7 @@ export default function DeliveriesPage() {
                     }}
                     searchEnabled={false}
                     showClearButton={false}
+                    disabled={formDisabled}
                   />
                 </div>
               </div>
@@ -518,6 +648,7 @@ export default function DeliveriesPage() {
                       searchEnabled
                       showClearButton
                       placeholder="Select personnel…"
+                      disabled={formDisabled}
                     />
                   </div>
                 </div>
@@ -536,6 +667,7 @@ export default function DeliveriesPage() {
                       searchEnabled
                       showClearButton
                       placeholder="Select site…"
+                      disabled={formDisabled}
                     />
                   </div>
                 </div>
@@ -554,6 +686,7 @@ export default function DeliveriesPage() {
                       searchEnabled
                       showClearButton
                       placeholder="Select department…"
+                      disabled={formDisabled}
                     />
                   </div>
                 </div>
@@ -568,6 +701,7 @@ export default function DeliveriesPage() {
                   onValueChanged={(e) => setNotes(e.value ?? "")}
                   height={72}
                   maxLength={2000}
+                  readOnly={formDisabled}
                 />
               </div>
             </div>
@@ -601,6 +735,7 @@ export default function DeliveriesPage() {
                         searchEnabled
                         showClearButton
                         placeholder="Select product…"
+                        disabled={formDisabled}
                       />
                     </div>
                     <div className="purchase-form__control">
@@ -611,6 +746,7 @@ export default function DeliveriesPage() {
                         onValueChanged={(e) =>
                           updateLine(line.key, { quantity: Number(e.value) || 0 })
                         }
+                        readOnly={formDisabled}
                       />
                     </div>
                     <div className="purchase-form__control">
@@ -626,6 +762,7 @@ export default function DeliveriesPage() {
                         }
                         searchEnabled={false}
                         showClearButton={false}
+                        disabled={formDisabled}
                       />
                     </div>
                     <div className="purchase-form__control">
@@ -633,7 +770,7 @@ export default function DeliveriesPage() {
                         value={line.unitPrice}
                         min={0}
                         format="#,##0.00####"
-                        readOnly={!priceEditable}
+                        readOnly={!priceEditable || formDisabled}
                         onValueChanged={(e) =>
                           updateLine(line.key, { unitPrice: Number(e.value) || 0 })
                         }
@@ -649,7 +786,7 @@ export default function DeliveriesPage() {
                       icon="trash"
                       stylingMode="text"
                       hint="Remove line"
-                      disabled={lines.length <= 1}
+                      disabled={lines.length <= 1 || formDisabled}
                       onClick={() => removeLine(line.key)}
                     />
                     {product && line.quantity > product.quantityOnHand ? (
@@ -665,7 +802,11 @@ export default function DeliveriesPage() {
               })}
 
               <div className="purchase-form__lines-footer">
-                <Button text="Add line" icon="add" stylingMode="text" onClick={addLine} />
+                {!formDisabled ? (
+                  <Button text="Add line" icon="add" stylingMode="text" onClick={addLine} />
+                ) : (
+                  <span />
+                )}
                 <span>
                   Grand total:{" "}
                   <strong>
@@ -679,15 +820,36 @@ export default function DeliveriesPage() {
             </div>
 
             <div className="purchase-form__actions">
-              <Button text="Cancel" stylingMode="text" onClick={closePopup} disabled={submitting} />
-              <Button
-                text="Save & print bon"
-                type="default"
-                stylingMode="contained"
-                icon="save"
-                disabled={submitting}
-                onClick={() => void submitDelivery()}
-              />
+              <Button text="Close" stylingMode="text" onClick={closePopup} disabled={submitting} />
+              {viewMode && editingId ? (
+                <Button
+                  text="Reprint bon"
+                  type="default"
+                  stylingMode="contained"
+                  icon="print"
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const detail = (await apiFetch(`/api/deliveries/${editingId}`)) as DeliveryDetail;
+                        downloadDeliveryNotePdf(deliveryNoteFromDetail(detail));
+                        notify("Bon de livraison téléchargé", "success", 2000);
+                      } catch (e: unknown) {
+                        notify(getErrorMessage(e, "Failed to reprint delivery note"), "error", 5000);
+                      }
+                    })();
+                  }}
+                />
+              ) : null}
+              {!viewMode ? (
+                <Button
+                  text={isEdit ? "Save changes" : "Save & print bon"}
+                  type="default"
+                  stylingMode="contained"
+                  icon="save"
+                  disabled={submitting || (isEdit ? !canEdit : !canAdd)}
+                  onClick={() => void submitDelivery()}
+                />
+              ) : null}
             </div>
           </div>
         </Popup>
