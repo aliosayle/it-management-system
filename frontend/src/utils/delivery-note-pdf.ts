@@ -153,6 +153,13 @@ function drawSignatureFooter(doc: jsPDF, x: number, y: number, totalWidth: numbe
   });
 }
 
+function noteShowsPrices(note: DeliveryNote): boolean {
+  if (note.lines.length === 0) {
+    return false;
+  }
+  return note.lines.some((l) => l.unitPrice !== 0 || l.lineTotal !== 0);
+}
+
 function drawLinesTable(
   doc: jsPDF,
   x: number,
@@ -160,9 +167,55 @@ function drawLinesTable(
   width: number,
   lines: DeliveryNoteLine[],
   grandTotal: number,
+  showPrices: boolean,
 ): number {
   const rowH = 8;
   const headerH = 9;
+
+  if (!showPrices) {
+    const colWidths = [width * 0.22, width * 0.58, width * 0.2];
+    const headers = ["Réf.", "Désignation", "Qté"];
+    const tableH = headerH + rowH * lines.length;
+
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.3);
+    doc.rect(x, y, width, tableH);
+
+    let colX = x;
+    headers.forEach((header, idx) => {
+      doc.setFont(FONT, "bold");
+      doc.setFontSize(9);
+      doc.text(header, colX + 2, y + 6);
+      if (idx < headers.length - 1) {
+        doc.line(colX + colWidths[idx], y, colX + colWidths[idx], y + tableH);
+      }
+      colX += colWidths[idx];
+    });
+
+    doc.line(x, y + headerH, x + width, y + headerH);
+
+    let rowY = y + headerH;
+    lines.forEach((line) => {
+      const values = [line.sku, line.productName, formatQuantity(line.quantity)];
+      colX = x;
+      values.forEach((value, idx) => {
+        doc.setFont(FONT, "normal");
+        const size = fitFontSize(doc, value, colWidths[idx] - 4, 9, 6);
+        doc.setFontSize(size);
+        if (idx === 2) {
+          doc.text(value, colX + colWidths[idx] - 2, rowY + 5.5, { align: "right" });
+        } else {
+          doc.text(value, colX + 2, rowY + 5.5);
+        }
+        colX += colWidths[idx];
+      });
+      doc.line(x, rowY + rowH, x + width, rowY + rowH);
+      rowY += rowH;
+    });
+
+    return y + tableH + 8;
+  }
+
   const colWidths = [width * 0.14, width * 0.36, width * 0.14, width * 0.18, width * 0.18];
   const headers = ["Réf.", "Désignation", "Qté", "P.U.", "Montant"];
 
@@ -296,7 +349,8 @@ export function downloadDeliveryNotePdf(note: DeliveryNote): void {
   doc.setFontSize(FIELD_FONT_SIZE);
   doc.text("Articles livrés", contentX, y);
   y += 6;
-  y = drawLinesTable(doc, contentX, y, contentW, note.lines, note.grandTotal);
+  const showPrices = noteShowsPrices(note);
+  y = drawLinesTable(doc, contentX, y, contentW, note.lines, note.grandTotal, showPrices);
 
   if (note.notes?.trim()) {
     y = drawWrappedNote(doc, "Remarques", note.notes, contentX, y, contentW);
