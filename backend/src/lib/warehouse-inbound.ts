@@ -13,9 +13,10 @@ export async function applyStockMovementInTransaction(
     quantity: Prisma.Decimal;
     note: string | null | undefined;
     purchaseId?: string | null;
+    deliveryId?: string | null;
   },
 ) {
-  const { productId, userId, type, quantity: q, note, purchaseId } = params;
+  const { productId, userId, type, quantity: q, note, purchaseId, deliveryId } = params;
 
   const product = await tx.product.findUnique({ where: { id: productId } });
   if (!product) {
@@ -56,6 +57,7 @@ export async function applyStockMovementInTransaction(
       balanceAfter: newBalance,
       note: note ?? undefined,
       purchaseId: purchaseId ?? undefined,
+      deliveryId: deliveryId ?? undefined,
     },
     include: {
       user: { select: { id: true, email: true, displayName: true } },

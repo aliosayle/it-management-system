@@ -10,11 +10,13 @@ export function movementJson(m: {
   note: string | null;
   createdAt: Date;
   purchaseId?: string | null;
+  deliveryId?: string | null;
 }) {
   return {
     ...m,
     quantity: Number(m.quantity),
     balanceAfter: Number(m.balanceAfter),
     purchaseId: m.purchaseId ?? null,
+    deliveryId: m.deliveryId ?? null,
   };
 }

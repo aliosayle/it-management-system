@@ -6,5 +6,6 @@ export { default as DepartmentsPage } from "./departments-page";
 export { default as PersonnelPage } from "./personnel-page";
 export { default as ProductsPage } from "./products-page";
 export { default as PurchasesPage } from "./purchases-page";
+export { default as DeliveriesPage } from "./deliveries-page";
 export { default as SuppliersPage } from "./suppliers-page";
 export { default as TasksPage } from "./tasks-page";

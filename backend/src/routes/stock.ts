@@ -59,7 +59,7 @@ router.post("/movements", requirePermission("stock", "add"), async (req, res) =>
           movement: row,
           product,
           issuedBy: row.user,
-          destination: note?.trim() || "General issue / external",
+          destination: note?.trim() || "Sortie générale",
         }),
       });
     }

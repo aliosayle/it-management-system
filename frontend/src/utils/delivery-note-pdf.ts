@@ -1,22 +1,21 @@
 import jsPDF from "jspdf";
-import { movementTypeLabel } from "../constants/movement-types";
-import {
-  deliveryNoteFromDetail,
-  downloadDeliveryNotePdf,
-} from "./delivery-note-pdf";
 
-export type TransferReceipt = {
-  movementId: string;
-  movementType: string;
-  quantity: number;
-  balanceAfter: number;
-  issuedAt: string | Date;
-  note: string | null;
-  productSku: string;
+export type DeliveryNoteLine = {
+  sku: string;
   productName: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
+export type DeliveryNote = {
+  id: string;
+  issuedAt: string | Date;
   issuedBy: string;
-  source: string;
   destination: string;
+  notes: string | null;
+  grandTotal: number;
+  lines: DeliveryNoteLine[];
 };
 
 const FONT = "helvetica";
@@ -53,6 +52,16 @@ function formatQuantity(value: number): string {
     return "—";
   }
   return value.toLocaleString("fr-FR", { maximumFractionDigits: 4 });
+}
+
+function formatMoney(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+  return value.toLocaleString("fr-FR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
 }
 
 function fitFontSize(doc: jsPDF, text: string, maxWidth: number, base: number, min = 6): number {
@@ -144,22 +153,23 @@ function drawSignatureFooter(doc: jsPDF, x: number, y: number, totalWidth: numbe
   });
 }
 
-function drawProductTable(
+function drawLinesTable(
   doc: jsPDF,
   x: number,
   y: number,
   width: number,
-  receipt: TransferReceipt,
+  lines: DeliveryNoteLine[],
+  grandTotal: number,
 ): number {
   const rowH = 8;
   const headerH = 9;
-  const colWidths = [width * 0.22, width * 0.5, width * 0.28];
-  const headers = ["Réf.", "Désignation", "Qté"];
-  const values = [receipt.productSku, receipt.productName, formatQuantity(receipt.quantity)];
+  const colWidths = [width * 0.14, width * 0.36, width * 0.14, width * 0.18, width * 0.18];
+  const headers = ["Réf.", "Désignation", "Qté", "P.U.", "Montant"];
 
+  const tableH = headerH + rowH * lines.length + rowH + 4;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
-  doc.rect(x, y, width, headerH + rowH);
+  doc.rect(x, y, width, tableH);
 
   let colX = x;
   headers.forEach((header, idx) => {
@@ -167,30 +177,81 @@ function drawProductTable(
     doc.setFontSize(9);
     doc.text(header, colX + 2, y + 6);
     if (idx < headers.length - 1) {
-      doc.line(colX + colWidths[idx], y, colX + colWidths[idx], y + headerH + rowH);
+      doc.line(colX + colWidths[idx], y, colX + colWidths[idx], y + tableH);
     }
     colX += colWidths[idx];
   });
 
   doc.line(x, y + headerH, x + width, y + headerH);
 
-  colX = x;
-  values.forEach((value, idx) => {
-    doc.setFont(FONT, "normal");
-    const size = fitFontSize(doc, value, colWidths[idx] - 4, 10, 7);
-    doc.setFontSize(size);
-    if (idx === 2) {
-      doc.text(value, colX + colWidths[idx] - 2, y + headerH + 5.5, { align: "right" });
-    } else {
-      doc.text(value, colX + 2, y + headerH + 5.5);
-    }
-    colX += colWidths[idx];
+  let rowY = y + headerH;
+  lines.forEach((line) => {
+    const values = [
+      line.sku,
+      line.productName,
+      formatQuantity(line.quantity),
+      formatMoney(line.unitPrice),
+      formatMoney(line.lineTotal),
+    ];
+    colX = x;
+    values.forEach((value, idx) => {
+      doc.setFont(FONT, "normal");
+      const size = fitFontSize(doc, value, colWidths[idx] - 4, 9, 6);
+      doc.setFontSize(size);
+      const alignRight = idx >= 2;
+      if (alignRight) {
+        doc.text(value, colX + colWidths[idx] - 2, rowY + 5.5, { align: "right" });
+      } else {
+        doc.text(value, colX + 2, rowY + 5.5);
+      }
+      colX += colWidths[idx];
+    });
+    doc.line(x, rowY + rowH, x + width, rowY + rowH);
+    rowY += rowH;
   });
 
-  return y + headerH + rowH + 8;
+  const totalY = rowY;
+  doc.setFont(FONT, "bold");
+  doc.setFontSize(10);
+  doc.text("Total général", x + 2, totalY + 5.5);
+  doc.text(formatMoney(grandTotal), x + width - 2, totalY + 5.5, { align: "right" });
+
+  return y + tableH + 8;
 }
 
-export function downloadTransferReceiptPdf(receipt: TransferReceipt): void {
+export function deliveryNoteFromDetail(detail: {
+  id: string;
+  createdAt: string;
+  destinationSummary: string;
+  notes: string | null;
+  grandTotal: number;
+  createdBy: { displayName: string; email: string };
+  lines: Array<{
+    sku: string;
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    lineTotal: number;
+  }>;
+}): DeliveryNote {
+  return {
+    id: detail.id,
+    issuedAt: detail.createdAt,
+    issuedBy: detail.createdBy.displayName?.trim() || detail.createdBy.email || "—",
+    destination: detail.destinationSummary,
+    notes: detail.notes,
+    grandTotal: detail.grandTotal,
+    lines: detail.lines.map((l) => ({
+      sku: l.sku,
+      productName: l.productName,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      lineTotal: l.lineTotal,
+    })),
+  };
+}
+
+export function downloadDeliveryNotePdf(note: DeliveryNote): void {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -222,146 +283,29 @@ export function downloadTransferReceiptPdf(receipt: TransferReceipt): void {
   doc.setFontSize(9);
   doc.text(HEADER_TITLE, pageW / 2, titleY + 7, { align: "center" });
 
-  const receiptNo = formatReceiptNumber(receipt.issuedAt);
+  const receiptNo = formatReceiptNumber(note.issuedAt);
   let y = titleY + 16;
 
   y = drawFieldRow(doc, "N° bon", receiptNo, contentX, y, contentW);
-  y = drawFieldRow(doc, "Date et heure", formatReceiptDate(receipt.issuedAt), contentX, y, contentW);
-  y = drawFieldRow(doc, "Émis par", receipt.issuedBy, contentX, y, contentW);
-  y = drawFieldRow(
-    doc,
-    "Mouvement",
-    movementTypeLabel(receipt.movementType),
-    contentX,
-    y,
-    contentW,
-  );
-  y = drawFieldRow(doc, "Provenance", receipt.source, contentX, y, contentW);
-  y = drawFieldRow(doc, "Destination", receipt.destination, contentX, y, contentW);
+  y = drawFieldRow(doc, "Date et heure", formatReceiptDate(note.issuedAt), contentX, y, contentW);
+  y = drawFieldRow(doc, "Émis par", note.issuedBy, contentX, y, contentW);
+  y = drawFieldRow(doc, "Destination", note.destination, contentX, y, contentW);
 
   y += 2;
   doc.setFont(FONT, "bold");
   doc.setFontSize(FIELD_FONT_SIZE);
-  doc.text("Article livré", contentX, y);
+  doc.text("Articles livrés", contentX, y);
   y += 6;
-  y = drawProductTable(doc, contentX, y, contentW, receipt);
+  y = drawLinesTable(doc, contentX, y, contentW, note.lines, note.grandTotal);
 
-  if (receipt.note?.trim()) {
-    y = drawWrappedNote(doc, "Remarques", receipt.note, contentX, y, contentW);
+  if (note.notes?.trim()) {
+    y = drawWrappedNote(doc, "Remarques", note.notes, contentX, y, contentW);
   }
 
   const sigHeight = 30;
   const sigY = innerY + innerH - pad - sigHeight;
   drawSignatureFooter(doc, contentX, sigY, contentW, sigHeight);
 
-  const safeSku = receipt.productSku.replace(/[^a-z0-9-_]/gi, "_").slice(0, 32);
   const safeNo = receiptNo.replace(/[^a-z0-9-_]/gi, "_");
-  doc.save(`BonLivraison_${safeSku}_${safeNo}.pdf`);
-}
-
-const OUTBOUND_MOVEMENT_TYPES = new Set(["OUT", "SCRAP", "LOSS"]);
-
-export type MovementHistoryRow = {
-  id: string;
-  type: string;
-  quantity: number;
-  balanceAfter: number;
-  note: string | null;
-  createdAt: string;
-  deliveryId?: string | null;
-  user?: { displayName: string; email: string };
-};
-
-export function canReprintTransferReceipt(movementType: string): boolean {
-  return OUTBOUND_MOVEMENT_TYPES.has(movementType);
-}
-
-export function parseDestinationFromMovementNote(
-  note: string | null,
-  movementType: string,
-): string {
-  if (!note?.trim()) {
-    return canReprintTransferReceipt(movementType)
-      ? "Sortie générale"
-      : "—";
-  }
-  const text = note.trim();
-  if (text.startsWith("Personnel bin ·")) {
-    const rest = text.slice("Personnel bin ·".length);
-    const name = rest.split(" · ")[0]?.trim();
-    return name ? `Bin personnel — ${name}` : "Bin personnel";
-  }
-  if (text.startsWith("Site bin ·")) {
-    const rest = text.slice("Site bin ·".length);
-    const label = rest.split(" · ")[0]?.trim();
-    return label ? `Bin site — ${label}` : "Bin site";
-  }
-  if (text.startsWith("Department ·")) {
-    const rest = text.slice("Department ·".length);
-    return rest ? `Département — ${rest.split(" · ")[0]?.trim()}` : "Département";
-  }
-  if (text.startsWith("General issue")) {
-    return "Sortie générale";
-  }
-  return text;
-}
-
-export function buildTransferReceiptFromMovement(
-  movement: MovementHistoryRow,
-  product: { sku: string; name: string },
-): TransferReceipt | null {
-  if (!canReprintTransferReceipt(movement.type)) {
-    return null;
-  }
-  return {
-    movementId: movement.id,
-    movementType: movement.type,
-    quantity: movement.quantity,
-    balanceAfter: movement.balanceAfter,
-    issuedAt: movement.createdAt,
-    note: movement.note,
-    productSku: product.sku,
-    productName: product.name,
-    issuedBy: movement.user?.displayName?.trim() || movement.user?.email || "—",
-    source: "Dépôt",
-    destination: parseDestinationFromMovementNote(movement.note, movement.type),
-  };
-}
-
-export function reprintTransferReceiptFromMovement(
-  movement: MovementHistoryRow,
-  product: { sku: string; name: string },
-): boolean {
-  const receipt = buildTransferReceiptFromMovement(movement, product);
-  if (!receipt) {
-    return false;
-  }
-  downloadTransferReceiptPdf(receipt);
-  return true;
-}
-
-export async function reprintReceiptFromMovement(
-  movement: MovementHistoryRow,
-  product: { sku: string; name: string },
-  fetchDelivery: (id: string) => Promise<unknown>,
-): Promise<boolean> {
-  if (!canReprintTransferReceipt(movement.type)) {
-    return false;
-  }
-  if (movement.deliveryId) {
-    const detail = (await fetchDelivery(movement.deliveryId)) as Parameters<
-      typeof deliveryNoteFromDetail
-    >[0];
-    downloadDeliveryNotePdf(deliveryNoteFromDetail(detail));
-    return true;
-  }
-  return reprintTransferReceiptFromMovement(movement, product);
-}
-
-export function maybeDownloadTransferReceipt(
-  payload: { transferReceipt?: TransferReceipt | null } | null | undefined,
-): void {
-  if (payload?.transferReceipt) {
-    downloadTransferReceiptPdf(payload.transferReceipt);
-  }
+  doc.save(`BonLivraison_${safeNo}.pdf`);
 }

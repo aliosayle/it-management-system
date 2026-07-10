@@ -14,6 +14,7 @@ export async function applyBinQuantityChange(
     newBinQuantity: Prisma.Decimal;
     userId: string;
     movementNote: string | null;
+    deliveryId?: string | null;
   },
 ): Promise<{
   id: string;
@@ -64,6 +65,7 @@ export async function applyBinQuantityChange(
       quantity: moveQty,
       balanceAfter: newBalance,
       note: opts.movementNote ?? undefined,
+      deliveryId: opts.deliveryId ?? undefined,
     },
     select: {
       id: true,

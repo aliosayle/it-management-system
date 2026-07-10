@@ -15,6 +15,7 @@ import suppliersRoutes from "./routes/suppliers.js";
 import departmentsRoutes from "./routes/departments.js";
 import tasksRoutes from "./routes/tasks.js";
 import notificationsRoutes from "./routes/notifications.js";
+import deliveriesRoutes from "./routes/deliveries.js";
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
@@ -46,6 +47,7 @@ app.use("/api/companies", companiesRoutes);
 app.use("/api/sites", sitesRoutes);
 app.use("/api/personnel", personnelRoutes);
 app.use("/api/purchases", purchasesRoutes);
+app.use("/api/deliveries", deliveriesRoutes);
 app.use("/api/suppliers", suppliersRoutes);
 app.use("/api/departments", departmentsRoutes);
 app.use("/api/tasks", tasksRoutes);

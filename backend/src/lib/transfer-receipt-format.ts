@@ -38,7 +38,7 @@ export function transferReceiptJson(opts: {
     productSku: opts.product.sku,
     productName: opts.product.name,
     issuedBy: opts.issuedBy.displayName?.trim() || opts.issuedBy.email,
-    source: opts.source ?? "Warehouse",
+    source: opts.source ?? "Dépôt",
     destination: opts.destination,
   };
 }

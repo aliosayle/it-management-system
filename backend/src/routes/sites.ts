@@ -183,7 +183,7 @@ router.post("/:id/bin/items", requirePermission("sites", "add"), async (req, res
       where: { id: actorUserId },
       select: { displayName: true, email: true },
     });
-    const destination = `Site bin — ${site.company.name} / ${site.name}`.trim();
+    const destination = `Bin site — ${site.company.name} / ${site.name}`.trim();
     const payload = attachOutboundTransferReceipt(
       siteBinItemJson(row),
       movement,
@@ -277,7 +277,7 @@ router.patch("/:id/bin/items/:itemId", requirePermission("sites", "edit"), async
       where: { id: actorUserId },
       select: { displayName: true, email: true },
     });
-    const destination = `Site bin — ${site.company.name} / ${site.name}`.trim();
+    const destination = `Bin site — ${site.company.name} / ${site.name}`.trim();
     const payload = attachOutboundTransferReceipt(
       siteBinItemJson(row),
       movement,

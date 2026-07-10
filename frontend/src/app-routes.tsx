@@ -7,6 +7,7 @@ import {
   PersonnelPage,
   ProductsPage,
   PurchasesPage,
+  DeliveriesPage,
   SuppliersPage,
   TasksPage,
 } from "./pages";
@@ -27,6 +28,7 @@ const routeData: {
   { path: "/personnel", element: PersonnelPage, resource: "personnel" },
   { path: "/products", element: ProductsPage, resource: "products" },
   { path: "/purchases", element: PurchasesPage, resource: "purchases" },
+  { path: "/deliveries", element: DeliveriesPage, resource: "deliveries" },
   { path: "/suppliers", element: SuppliersPage, resource: "suppliers" },
   { path: "/tasks", element: TasksPage, resource: "tasks" },
   { path: "/users", element: UsersPage, resource: "users" },

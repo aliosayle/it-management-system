@@ -32,7 +32,7 @@ import { getDataGridErrorMessage, getErrorMessage } from "../utils/error-message
 import {
   canReprintTransferReceipt,
   maybeDownloadTransferReceipt,
-  reprintTransferReceiptFromMovement,
+  reprintReceiptFromMovement,
   type TransferReceipt,
 } from "../utils/transfer-receipt-pdf";
 import type { ProductOption } from "../components/personnel-bin-popup";
@@ -68,6 +68,7 @@ type MovementRow = {
   balanceAfter: number;
   note: string | null;
   createdAt: string;
+  deliveryId?: string | null;
   user?: { displayName: string; email: string };
 };
 
@@ -402,16 +403,20 @@ export default function ProductsPage() {
   }, [openBonViewer]);
 
   const reprintMovementReceipt = useCallback(
-    (row: MovementRow) => {
+    async (row: MovementRow) => {
       if (!statementProduct) {
         return;
       }
-      const ok = reprintTransferReceiptFromMovement(row, {
-        sku: statementProduct.sku,
-        name: statementProduct.name,
-      });
+      const ok = await reprintReceiptFromMovement(
+        row,
+        {
+          sku: statementProduct.sku,
+          name: statementProduct.name,
+        },
+        (id) => apiFetch(`/api/deliveries/${id}`),
+      );
       if (ok) {
-        notify("Transfer receipt downloaded", "success", 2000);
+        notify("Bon de livraison téléchargé", "success", 2000);
       }
     },
     [statementProduct],
@@ -681,7 +686,7 @@ export default function ProductsPage() {
                       onClick={(e) => {
                         const row = e.row?.data as MovementRow | undefined;
                         if (row) {
-                          reprintMovementReceipt(row);
+                          void reprintMovementReceipt(row);
                         }
                       }}
                     />

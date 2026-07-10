@@ -77,6 +77,20 @@ enum UserNotificationType {
   TASK_SUBMITTED_FOR_REVIEW
 }
 
+enum DeliveryDestination {
+  PERSONNEL_BIN
+  SITE_BIN
+  DEPARTMENT
+  GENERAL
+}
+
+enum DeliveryPriceSource {
+  LAST_PURCHASE
+  AVERAGE_PURCHASE
+  MANUAL
+  ZERO
+}
+
 model User {
   id             String          @id @default(cuid())
   email          String          @unique
@@ -96,6 +110,7 @@ model User {
   taskActivities     TaskActivity[]
   taskAttachments    TaskAttachment[]
   notifications      UserNotification[]
+  deliveriesCreated  Delivery[]
 }
 
 model UserPagePermission {
@@ -133,6 +148,7 @@ model Site {
   departments            Department[]
   purchaseHeaderTargets  Purchase[]     @relation("PurchaseSiteBinSummary")
   purchaseLinesBinTarget PurchaseLine[] @relation("PurchaseLineSiteBinTarget")
+  deliveryTargets        Delivery[]     @relation("DeliverySiteTarget")
   tasks                  Task[]
 
   @@index([companyId])
@@ -147,6 +163,7 @@ model Department {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   purchaseLines  PurchaseLine[]
+  deliveries     Delivery[]
 
   @@unique([siteId, name])
   @@index([siteId])
@@ -172,6 +189,7 @@ model Personnel {
   purchasesAuthorized     Purchase[]         @relation("PurchaseAuthorizer")
   purchasesBinTarget      Purchase[]         @relation("PurchaseBinTarget")
   purchasesBuyer          Purchase[]         @relation("PurchaseBuyer")
+  deliveryTargets         Delivery[]         @relation("DeliveryPersonnelTarget")
   tasks                   Task[]
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
@@ -207,6 +225,7 @@ model Product {
   personnelBinItems  PersonnelBinItem[]
   siteBinItems       SiteBinItem[]
   purchaseLines      PurchaseLine[]
+  deliveryLines      DeliveryLine[]
   tasks              Task[]
 }
 
@@ -326,11 +345,53 @@ model StockMovement {
   note         String?      @db.Text
   purchaseId   String?
   purchase     Purchase?    @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  deliveryId   String?
+  delivery     Delivery?    @relation(fields: [deliveryId], references: [id], onDelete: SetNull)
   createdAt    DateTime     @default(now())
 
   @@index([productId])
   @@index([createdAt])
   @@index([purchaseId])
+  @@index([deliveryId])
+}
+
+model Delivery {
+  id                String              @id @default(cuid())
+  destination       DeliveryDestination
+  targetPersonnelId String?
+  targetPersonnel   Personnel?          @relation("DeliveryPersonnelTarget", fields: [targetPersonnelId], references: [id], onDelete: SetNull)
+  targetSiteId      String?
+  targetSite        Site?               @relation("DeliverySiteTarget", fields: [targetSiteId], references: [id], onDelete: SetNull)
+  departmentId      String?
+  department        Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  notes             String?             @db.Text
+  createdByUserId   String
+  createdBy         User                @relation(fields: [createdByUserId], references: [id])
+  lines             DeliveryLine[]
+  stockMovements    StockMovement[]
+  createdAt         DateTime            @default(now())
+
+  @@index([createdByUserId])
+  @@index([createdAt])
+  @@index([targetPersonnelId])
+  @@index([targetSiteId])
+  @@index([departmentId])
+}
+
+model DeliveryLine {
+  id          String              @id @default(cuid())
+  deliveryId  String
+  delivery    Delivery            @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product             @relation(fields: [productId], references: [id])
+  lineIndex   Int                 @default(0)
+  quantity    Decimal             @db.Decimal(14, 4)
+  unitPrice   Decimal             @db.Decimal(14, 4)
+  priceSource DeliveryPriceSource
+  lineTotal   Decimal             @db.Decimal(14, 4)
+
+  @@index([deliveryId])
+  @@index([productId])
 }
 
 model Task {

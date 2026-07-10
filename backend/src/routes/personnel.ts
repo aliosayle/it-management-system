@@ -270,7 +270,7 @@ router.post("/:id/bin/items", requirePermission("personnel", "add"), async (req,
       where: { id: actorUserId },
       select: { displayName: true, email: true },
     });
-    const destination = `Personal bin — ${personnel.firstName} ${personnel.lastName}`.trim();
+    const destination = `Bin personnel — ${personnel.firstName} ${personnel.lastName}`.trim();
     const payload = attachOutboundTransferReceipt(
       binItemJson(row),
       movement,
@@ -364,7 +364,7 @@ router.patch("/:id/bin/items/:itemId", requirePermission("personnel", "edit"), a
       where: { id: actorUserId },
       select: { displayName: true, email: true },
     });
-    const destination = `Personal bin — ${personnel.firstName} ${personnel.lastName}`.trim();
+    const destination = `Bin personnel — ${personnel.firstName} ${personnel.lastName}`.trim();
     const payload = attachOutboundTransferReceipt(
       binItemJson(row),
       movement,
